@@ -13,6 +13,12 @@ enum class Metric
     kInnerProduct   // 内积（向量已归一化时等价于余弦）
 };
 
+struct Hit
+{
+    std::size_t id;
+    float score;
+};
+
 class VectorTable
 {
 public:

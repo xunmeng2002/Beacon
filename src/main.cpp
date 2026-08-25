@@ -27,11 +27,13 @@ private:
 
 static void DemoSmall();
 static void DemoLarge();
+static void DemoIndex();
 
 int main()
 {
     DemoSmall();
     DemoLarge();
+    DemoIndex();
     return 0;
 }
 
@@ -141,4 +143,86 @@ static void DemoLarge()
     std::cout << "  数据量=" << db.count() << " 维度=" << dim
         << " 检索耗时=" << ms << " ms\n";
     std::cout << "  top-1 id=" << hits[0].id << " score=" << hits[0].score << "\n";
+}
+
+// HNSW 近似检索 vs 暴力检索：recall@10 与延迟
+static void DemoIndex()
+{
+    using namespace mdbvec;
+    std::cout << "==== 演示 3：HNSW 近似检索 vs 暴力检索 ====\n";
+
+    const std::size_t count = 30000;
+    const std::size_t dim = 64;
+    std::mt19937 rng(7);
+    std::normal_distribution<float> dist(0.0f, 1.0f);
+
+    VectorDb db(dim, Metric::kCosine);
+    std::vector<float> vec(dim);
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        for (auto& x : vec)
+        {
+            x = dist(rng);
+        }
+        db.Add(vec, "vec-" + std::to_string(i));
+    }
+    db.EnableIndex();
+    std::cout << "  索引启用=" << db.IndexEnabled() << " 数据量=" << db.count() << "\n";
+
+    const std::size_t queries = 100;
+    const std::size_t k = 10;
+    const std::size_t ef = 100;
+
+    double total_recall = 0.0;
+    std::mt19937 qrng(99);
+    for (std::size_t qi = 0; qi < queries; ++qi)
+    {
+        for (auto& x : vec)
+        {
+            x = dist(qrng);
+        }
+        const auto exact = db.Search(vec, k);
+        const auto approx = db.SearchIndexed(vec, k, ef);
+        std::size_t hit = 0;
+        for (const auto& a : approx)
+        {
+            for (const auto& e : exact)
+            {
+                if (a.id == e.id)
+                {
+                    ++hit;
+                    break;
+                }
+            }
+        }
+        total_recall += static_cast<double>(hit) / k;
+    }
+    const double recall = total_recall / queries;
+
+    Stopwatch sw;
+    sw.Start();
+    for (std::size_t qi = 0; qi < queries; ++qi)
+    {
+        for (auto& x : vec)
+        {
+            x = dist(qrng);
+        }
+        db.Search(vec, k);
+    }
+    const double brute_ms = sw.elapsed_ms() / queries;
+
+    sw.Start();
+    for (std::size_t qi = 0; qi < queries; ++qi)
+    {
+        for (auto& x : vec)
+        {
+            x = dist(qrng);
+        }
+        db.SearchIndexed(vec, k, ef);
+    }
+    const double index_ms = sw.elapsed_ms() / queries;
+
+    std::cout << "  recall@10=" << recall
+        << "  暴力=" << brute_ms << " ms/query"
+        << "  HNSW=" << index_ms << " ms/query (ef=" << ef << ")\n";
 }

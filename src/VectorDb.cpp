@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <fstream>
+#include <memory>
 #include <queue>
 
 namespace mdbvec {
@@ -216,17 +217,32 @@ VectorDb::VectorDb(std::size_t dim, Metric metric) : table_(dim, metric)
 
 std::size_t VectorDb::Add(const std::vector<float>& vec, const std::string& meta)
 {
-    return table_.Add(vec, meta);
+    const std::size_t id = table_.Add(vec, meta);
+    if (id != static_cast<std::size_t>(-1) && index_ && !index_dirty_)
+    {
+        index_->Add(id);
+    }
+    return id;
 }
 
 bool VectorDb::Update(std::size_t id, const std::vector<float>& vec, const std::string& meta)
 {
-    return table_.Update(id, vec, meta);
+    const bool ok = table_.Update(id, vec, meta);
+    if (ok && index_)
+    {
+        index_dirty_ = true;
+    }
+    return ok;
 }
 
 bool VectorDb::Delete(std::size_t id)
 {
-    return table_.Delete(id);
+    const bool ok = table_.Delete(id);
+    if (ok && index_)
+    {
+        index_dirty_ = true;
+    }
+    return ok;
 }
 
 std::vector<Hit> VectorDb::Search(const std::vector<float>& query, std::size_t k) const
@@ -245,6 +261,39 @@ std::vector<Hit> VectorDb::Search(const std::vector<float>& query, std::size_t k
     }
 
     return SelectTopK(q.data(), table_, std::min(k, n));
+}
+
+void VectorDb::EnableIndex(std::size_t m, std::size_t ef_construction)
+{
+    index_ = std::make_unique<HnswIndex>(&table_, m, ef_construction);
+    index_->Rebuild();
+    index_dirty_ = false;
+}
+
+void VectorDb::DisableIndex()
+{
+    index_ = nullptr;
+    index_dirty_ = false;
+}
+
+bool VectorDb::IndexEnabled() const
+{
+    return index_ != nullptr;
+}
+
+std::vector<Hit> VectorDb::SearchIndexed(const std::vector<float>& query, std::size_t k,
+                                         std::size_t ef) const
+{
+    if (!index_)
+    {
+        return {};
+    }
+    if (index_dirty_)
+    {
+        index_->Rebuild();
+        index_dirty_ = false;
+    }
+    return index_->Search(query, k, ef);
 }
 
 std::size_t VectorDb::count() const
@@ -270,6 +319,8 @@ const std::string& VectorDb::metadata(std::size_t id) const
 void VectorDb::Clear()
 {
     table_ = VectorTable();
+    index_ = nullptr;
+    index_dirty_ = false;
 }
 
 bool VectorDb::Save(const std::string& path) const
@@ -329,6 +380,10 @@ bool VectorDb::Load(const std::string& path)
 
     table_.set_data(static_cast<std::size_t>(header.dim), U8ToMetric(header.metric),
                     std::move(data), std::move(metadata), std::move(deleted));
+    if (index_)
+    {
+        index_dirty_ = true;
+    }
     return true;
 }
 

@@ -14,9 +14,10 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
 endif()
 
 add_library(mdbvec
+  src/HnswIndex.cpp
   src/Metrics.cpp
-  src/VectorTable.cpp
   src/VectorDb.cpp
+  src/VectorTable.cpp
 )
 target_include_directories(mdbvec PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 

@@ -12,6 +12,7 @@
 - **二进制持久化**：`magic("MDBV") + version + dim + metric + count + 数据 + 元数据`，加载时校验魔数与版本
 - **元数据**：每个向量可携带任意字符串（文档 id、原文片段等）
 - **CRUD**：软删除（tombstone，数据不动、id 稳定）+ 就地更新（对已删除 id 执行则复活）
+- **HNSW 索引**：分层可导航小世界图，近似检索（`ef` 可调）；Delete/Update 后懒重建，暴力检索保留作精确对照
 - **持久化格式版本化**：v2 起记录 tombstone，向后兼容 v1 旧文件
 
 ## 构建
@@ -34,10 +35,11 @@ cmake --build build --config Release
 ./build/mdbvec_demo                    # Linux/macOS
 ```
 
-Demo 输出两类结果：
+Demo 输出三类结果：
 
-1. **3 维余弦检索 + 持久化往返**：验证归一化、Top-K 排序、save/load 正确性
-2. **10k × 64 维暴力检索延迟**：量测全扫描耗时（AVX2 下约 0.2~0.4 ms）
+1. **3 维余弦检索 + 持久化往返**：验证归一化、Top-K 排序、软删除/更新、save/load 正确性
+2. **10k × 64 维暴力检索延迟**：量测全扫描耗时（AVX2 下约 0.2 ms）
+3. **30k × 64 维 HNSW vs 暴力**：recall@10 与延迟对比（HNSW 过交叉点后快于暴力，~0.47 ms vs ~0.69 ms）
 
 ## 目录结构
 
@@ -45,10 +47,12 @@ Demo 输出两类结果：
 include/mdbvec/
   Metrics.h       距离度量：点积、L2 范数、L2 归一化
   VectorTable.h   定长向量表：扁平存储 + 归一化 + 软删除/就地更新
-  VectorDb.h      门面：搜索、持久化、清空
+  HnswIndex.h     HNSW 分层小世界图索引（近似检索）
+  VectorDb.h      门面：精确/近似搜索、持久化、清空
 src/
   Metrics.cpp     AVX2 / 标量双路径点积
   VectorTable.cpp
+  HnswIndex.cpp   HNSW 建图/检索
   VectorDb.cpp    最小堆 Top-K、Save/Load
   main.cpp        demo
 ```
@@ -56,7 +60,7 @@ src/
 ## 快速上手
 
 ```cpp
-#include "mdbvec/vector_db.h"
+#include "mdbvec/VectorDb.h"
 
 mdbvec::VectorDb db(384, mdbvec::Metric::kCosine);
 db.Add({ 0.1f, 0.2f, /* ... */ }, "文档A");
@@ -64,14 +68,19 @@ db.Add({ 0.1f, 0.2f, /* ... */ }, "文档A");
 db.Update(id, { 0.2f, 0.1f, /* ... */ }, "文档A(修订)");  // 就地更新
 db.Delete(id);                                            // 软删除，id 仍有效
 
-auto hits = db.Search({ 0.15f, 0.21f, /* ... */ }, 5);  // 返回 Top-5
+auto hits = db.Search({ 0.15f, 0.21f, /* ... */ }, 5);  // 精确 Top-5
+
+db.EnableIndex();                                       // 构建 HNSW 索引
+auto near = db.SearchIndexed({ 0.15f, 0.21f, /* ... */ }, 5, 100);  // 近似 Top-5
+
 db.Save("index.mdbv");                                  // 持久化
 db.Load("index.mdbv");                                  // 恢复
 ```
 
 ## 路线图
 
-- [ ] **HNSW 索引**：跳过图结构，把检索从 `O(n·dim)` 降到亚线性，支持百万级规模
+- [x] **HNSW 索引**：分层可导航小世界图，近似检索已实现（M=16 / ef 可调 / 启发式选边）
+- [ ] **HNSW 增量维护**：节点级删除/更新，替代当前懒重建
 - [ ] **pybind11 绑定**：提供 Python API，供 RAG 流水线直接调用
 - [ ] **混合检索**：结合 BM25 关键词检索，文本召回更稳
 - [ ] **RAG 示例**：金融文档切片 → embedding → 本库检索 → 拼接到 LLM 提示词
