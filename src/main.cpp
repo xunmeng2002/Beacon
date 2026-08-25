@@ -241,4 +241,60 @@ static void DemoIndex()
     std::cout << "  recall@10=" << recall
         << "  暴力=" << brute_ms << " ms/query"
         << "  HNSW=" << index_ms << " ms/query (ef=" << ef << ")\n";
+
+    // 增量维护：删除 3000 个节点，量测耗时（对比懒重建整图 ~10s）与删除后 recall
+    std::size_t removed = 0;
+    Stopwatch sw_del;
+    sw_del.Start();
+    for (std::size_t id = 0; id < count && removed < 3000; ++id)
+    {
+        if (db.Delete(id))
+        {
+            ++removed;
+        }
+    }
+    const double del_ms = sw_del.elapsed_ms();
+
+    double total_recall_del = 0.0;
+    std::mt19937 drng(123);
+    for (std::size_t qi = 0; qi < queries; ++qi)
+    {
+        for (auto& x : vec)
+        {
+            x = dist(drng);
+        }
+        const auto exact = db.Search(vec, k);
+        const auto approx = db.SearchIndexed(vec, k, ef);
+        std::size_t hit = 0;
+        for (const auto& a : approx)
+        {
+            for (const auto& e : exact)
+            {
+                if (a.id == e.id)
+                {
+                    ++hit;
+                    break;
+                }
+            }
+        }
+        total_recall_del += static_cast<double>(hit) / k;
+    }
+
+    // 含索引持久化并重载：首查若免重建（~0.2ms）即证明索引已从磁盘恢复
+    const std::string ipath = "demo_index.mdbv";
+    db.Save(ipath);
+    VectorDb reloaded(dim, Metric::kCosine);
+    reloaded.Load(ipath);
+    Stopwatch sw_first;
+    sw_first.Start();
+    const auto reload_hits = reloaded.SearchIndexed(vec, k, ef);
+    const double first_ms = sw_first.elapsed_ms();
+
+    std::cout << "  增量删 3000 节点耗时=" << del_ms << " ms"
+              << " 删除后 recall@10=" << (total_recall_del / queries) << "\n";
+    if (!reload_hits.empty())
+    {
+        std::cout << "  含索引重载后首查=" << first_ms << " ms (免重建) top1="
+                  << reload_hits[0].id << "\n";
+    }
 }

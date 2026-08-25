@@ -13,7 +13,8 @@ namespace mdbvec {
 namespace
 {
 constexpr char kMagic[4] = { 'M', 'D', 'B', 'V' };
-constexpr std::uint32_t kFormatVersion = 2;   // v2 起含 tombstone 段；v1 全视为存活
+// v1 全存活；v2 起含 tombstone 段；v3 起含 HNSW 索引段（可缺失，缺失即懒重建）
+constexpr std::uint32_t kFormatVersion = 3;
 
 // 优先队列按 score 最小堆组织（堆顶是最差候选）
 struct MinScoreFirst
@@ -145,7 +146,7 @@ bool ReadHeader(std::ifstream& in, FileHeader& header)
     in.read(reinterpret_cast<char*>(&header.dim), sizeof(header.dim));
     in.read(reinterpret_cast<char*>(&header.metric), sizeof(header.metric));
     in.read(reinterpret_cast<char*>(&header.slot_count), sizeof(header.slot_count));
-    if (!in || (header.version != 1 && header.version != kFormatVersion))
+    if (!in || header.version < 1 || header.version > kFormatVersion)
     {
         return false;
     }
@@ -230,7 +231,7 @@ bool VectorDb::Update(std::size_t id, const std::vector<float>& vec, const std::
     const bool ok = table_.Update(id, vec, meta);
     if (ok && index_)
     {
-        index_dirty_ = true;
+        index_->Add(id);   // 幂等：在图中则先移除再按新向量重插
     }
     return ok;
 }
@@ -240,7 +241,7 @@ bool VectorDb::Delete(std::size_t id)
     const bool ok = table_.Delete(id);
     if (ok && index_)
     {
-        index_dirty_ = true;
+        index_->Remove(id);   // 节点级删除，不再触发全量重建
     }
     return ok;
 }
@@ -345,12 +346,20 @@ bool VectorDb::Save(const std::string& path) const
         return false;
     }
 
-    if (slot_count > 0)
+    if (slot_count > 0 &&
+        !(WriteVectorData(out, table_) && WriteTombstones(out, table_) &&
+          WriteMetadata(out, table_)))
     {
-        return WriteVectorData(out, table_) && WriteTombstones(out, table_) &&
-               WriteMetadata(out, table_);
+        return false;
     }
-    return true;
+    // v3 起：向量段权威，索引段为可校验缓存（缺失/损坏即降级懒重建）
+    const std::uint8_t has_index = index_ ? 1u : 0u;
+    out.write(reinterpret_cast<const char*>(&has_index), sizeof(has_index));
+    if (index_ && !index_->Write(out))
+    {
+        return false;
+    }
+    return static_cast<bool>(out);
 }
 
 bool VectorDb::Load(const std::string& path)
@@ -383,6 +392,20 @@ bool VectorDb::Load(const std::string& path)
     if (index_)
     {
         index_dirty_ = true;
+    }
+    if (header.version >= 3)
+    {
+        std::uint8_t has_index = 0;
+        in.read(reinterpret_cast<char*>(&has_index), sizeof(has_index));
+        if (has_index)
+        {
+            if (!index_)
+            {
+                index_ = std::make_unique<HnswIndex>(&table_);
+            }
+            // 索引段校验失败/截断 → 标记脏，下次 SearchIndexed 懒重建（向量数据不受影响）
+            index_dirty_ = !index_->Read(in);
+        }
     }
     return true;
 }

@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <istream>
+#include <ostream>
 #include <queue>
 
 namespace mdbvec {
@@ -190,6 +192,10 @@ void HnswIndex::Add(std::size_t id)
     {
         return;
     }
+    if (id < node_level_.size() && node_level_[id] >= 0)
+    {
+        Remove(id);   // 幂等：已在图中则先移除，再按当前向量重插
+    }
     if (node_level_.size() <= id)
     {
         node_level_.resize(id + 1, -1);
@@ -241,6 +247,191 @@ void HnswIndex::Add(std::size_t id)
         enter_point_ = static_cast<int>(id);
         top_level_ = new_level;
     }
+}
+
+void HnswIndex::Remove(std::size_t id)
+{
+    if (id >= node_level_.size() || node_level_[id] < 0)
+    {
+        return;   // 不在图中
+    }
+    const int node_level = node_level_[id];
+    for (int layer = 0; layer <= node_level; ++layer)
+    {
+        const auto& id_links = links_[id][static_cast<std::size_t>(layer)];
+        std::vector<std::size_t> neighbors;
+        neighbors.reserve(id_links.size());
+        for (std::size_t nbr : id_links)
+        {
+            if (table_->deleted(nbr))
+            {
+                continue;
+            }
+            // 从 nbr 的该层邻接表剔除 id
+            std::vector<std::size_t>& nlist = links_[nbr][static_cast<std::size_t>(layer)];
+            nlist.erase(std::remove(nlist.begin(), nlist.end(), id), nlist.end());
+            neighbors.push_back(nbr);
+        }
+        // 被删节点的邻居两两重连（双向），保持该层连通性；随后按容量修剪，防度无界膨胀
+        const std::size_t max_links = (layer == 0) ? 2 * m_ : m_;
+        for (std::size_t i = 0; i < neighbors.size(); ++i)
+        {
+            for (std::size_t j = i + 1; j < neighbors.size(); ++j)
+            {
+                AddLink(layer, neighbors[i], neighbors[j]);
+                AddLink(layer, neighbors[j], neighbors[i]);
+            }
+        }
+        for (std::size_t nbr : neighbors)
+        {
+            PruneLinks(nbr, layer, max_links);
+        }
+    }
+    node_level_[id] = -1;
+    links_[id].clear();
+    if (enter_point_ == static_cast<int>(id))
+    {
+        // 入口被删：退到任一层 0 存活节点
+        enter_point_ = -1;
+        for (std::size_t i = 0; i < node_level_.size(); ++i)
+        {
+            if (node_level_[i] >= 0)
+            {
+                enter_point_ = static_cast<int>(i);
+                break;
+            }
+        }
+        top_level_ = enter_point_ >= 0
+            ? node_level_[static_cast<std::size_t>(enter_point_)]
+            : 0;
+    }
+}
+
+bool HnswIndex::Write(std::ostream& out) const
+{
+    const auto write_u64 = [&out](std::uint64_t value)
+    {
+        out.write(reinterpret_cast<const char*>(&value), sizeof(value));
+    };
+    const auto write_i32 = [&out](std::int32_t value)
+    {
+        out.write(reinterpret_cast<const char*>(&value), sizeof(value));
+    };
+
+    write_u64(static_cast<std::uint64_t>(m_));
+    write_u64(static_cast<std::uint64_t>(ef_construction_));
+    write_i32(static_cast<std::int32_t>(enter_point_));
+    write_i32(static_cast<std::int32_t>(top_level_));
+    write_u64(static_cast<std::uint64_t>(node_level_.size()));
+    for (std::size_t id = 0; id < node_level_.size(); ++id)
+    {
+        write_i32(static_cast<std::int32_t>(node_level_[id]));
+        if (node_level_[id] < 0)
+        {
+            continue;
+        }
+        for (std::size_t layer = 0;
+             layer < static_cast<std::size_t>(node_level_[id] + 1); ++layer)
+        {
+            const auto& neighbors = links_[id][layer];
+            write_u64(static_cast<std::uint64_t>(neighbors.size()));
+            for (std::size_t nbr : neighbors)
+            {
+                const std::uint32_t value = static_cast<std::uint32_t>(nbr);
+                out.write(reinterpret_cast<const char*>(&value), sizeof(value));
+            }
+        }
+    }
+    return static_cast<bool>(out);
+}
+
+bool HnswIndex::Read(std::istream& in)
+{
+    const auto read_u64 = [&in](std::uint64_t& value)
+    {
+        in.read(reinterpret_cast<char*>(&value), sizeof(value));
+        return static_cast<bool>(in);
+    };
+    const auto read_i32 = [&in](std::int32_t& value)
+    {
+        in.read(reinterpret_cast<char*>(&value), sizeof(value));
+        return static_cast<bool>(in);
+    };
+    const auto read_u32 = [&in](std::uint32_t& value)
+    {
+        in.read(reinterpret_cast<char*>(&value), sizeof(value));
+        return static_cast<bool>(in);
+    };
+
+    std::uint64_t m = 0;
+    std::uint64_t ef_construction = 0;
+    std::int32_t enter_point = 0;
+    std::int32_t top_level = 0;
+    std::uint64_t slot_count = 0;
+    if (!read_u64(m) || !read_u64(ef_construction) || !read_i32(enter_point) ||
+        !read_i32(top_level) || !read_u64(slot_count) ||
+        slot_count != table_->slot_count())
+    {
+        return false;
+    }
+
+    m_ = std::max<std::size_t>(m, 3);
+    ef_construction_ = std::max<std::size_t>(ef_construction, 1);
+    level_mult_ = 1.0 / std::log(static_cast<double>(m_));
+
+    node_level_.assign(static_cast<std::size_t>(slot_count), -1);
+    links_.assign(static_cast<std::size_t>(slot_count), {});
+    for (std::size_t id = 0; id < node_level_.size(); ++id)
+    {
+        std::int32_t level = 0;
+        if (!read_i32(level) || level < -1 || level > 32)
+        {
+            return false;
+        }
+        if (level < 0)
+        {
+            continue;
+        }
+        if (table_->deleted(id))
+        {
+            return false;   // 图中不允许出现已删除槽位
+        }
+        node_level_[id] = static_cast<int>(level);
+        links_[id].assign(static_cast<std::size_t>(level) + 1, {});
+        for (std::size_t layer = 0; layer < static_cast<std::size_t>(level + 1); ++layer)
+        {
+            std::uint64_t neighbor_count = 0;
+            if (!read_u64(neighbor_count) || neighbor_count > 2 * m_)
+            {
+                return false;
+            }
+            std::vector<std::size_t>& nlist = links_[id][layer];
+            nlist.reserve(static_cast<std::size_t>(neighbor_count));
+            for (std::uint64_t i = 0; i < neighbor_count; ++i)
+            {
+                std::uint32_t nbr = 0;
+                if (!read_u32(nbr) || static_cast<std::size_t>(nbr) >= node_level_.size())
+                {
+                    return false;   // 引用越界 → 判为无效
+                }
+                nlist.push_back(static_cast<std::size_t>(nbr));
+            }
+        }
+    }
+
+    if (enter_point < -1 || top_level < 0 ||
+        (enter_point >= 0 &&
+         (static_cast<std::size_t>(enter_point) >= node_level_.size() ||
+          node_level_[static_cast<std::size_t>(enter_point)] < 0 ||
+          top_level != node_level_[static_cast<std::size_t>(enter_point)])) ||
+        node_count() != table_->count())
+    {
+        return false;   // 入口/层高不一致，或图中节点数 ≠ 存活向量数 → 判为无效
+    }
+
+    enter_point_ = enter_point;
+    top_level_ = top_level;
+    return true;
 }
 
 void HnswIndex::Rebuild()
