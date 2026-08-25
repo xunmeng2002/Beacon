@@ -31,6 +31,18 @@ static void DemoIndex();
 
 int main()
 {
+#ifdef NDEBUG
+    const char* config = "Release";
+#else
+    const char* config = "Debug";
+#endif
+#ifdef __AVX2__
+    const char* simd = "AVX2";
+#else
+    const char* simd = "标量回退";
+#endif
+    std::cout << "[构建配置] " << config << " / " << simd << "\n";
+
     DemoSmall();
     DemoLarge();
     DemoIndex();
