@@ -12,7 +12,7 @@ namespace mdbvec {
 namespace
 {
 constexpr char kMagic[4] = { 'M', 'D', 'B', 'V' };
-constexpr std::uint32_t kFormatVersion = 1;
+constexpr std::uint32_t kFormatVersion = 2;   // v2 起含 tombstone 段；v1 全视为存活
 
 // 优先队列按 score 最小堆组织（堆顶是最差候选）
 struct MinScoreFirst
@@ -21,6 +21,14 @@ struct MinScoreFirst
     {
         return a.score > b.score;
     }
+};
+
+struct FileHeader
+{
+    std::uint32_t version;
+    std::uint64_t dim;
+    std::uint8_t metric;
+    std::uint64_t slot_count;
 };
 
 std::uint8_t MetricToU8(Metric m)
@@ -63,24 +71,42 @@ bool ReadStr(std::ifstream& in, std::string& s)
 bool WriteVectorData(std::ofstream& out, const VectorTable& table)
 {
     const std::uint64_t float_count =
-        static_cast<std::uint64_t>(table.dim()) * static_cast<std::uint64_t>(table.count());
+        static_cast<std::uint64_t>(table.dim()) * static_cast<std::uint64_t>(table.slot_count());
     out.write(reinterpret_cast<const char*>(table.data()),
               static_cast<std::streamsize>(float_count * sizeof(float)));
     return static_cast<bool>(out);
 }
 
-bool ReadVectorData(std::ifstream& in, std::size_t dim, std::size_t count,
+bool ReadVectorData(std::ifstream& in, std::size_t dim, std::size_t slot_count,
                     std::vector<float>& data)
 {
-    data.resize(dim * count);
+    data.resize(dim * slot_count);
     in.read(reinterpret_cast<char*>(data.data()),
             static_cast<std::streamsize>(data.size() * sizeof(float)));
     return static_cast<bool>(in);
 }
 
+bool WriteTombstones(std::ofstream& out, const VectorTable& table)
+{
+    for (std::size_t id = 0; id < table.slot_count(); ++id)
+    {
+        const std::uint8_t flag = table.deleted(id) ? 1u : 0u;
+        out.write(reinterpret_cast<const char*>(&flag), sizeof(flag));
+    }
+    return static_cast<bool>(out);
+}
+
+bool ReadTombstones(std::ifstream& in, std::size_t slot_count, std::vector<std::uint8_t>& deleted)
+{
+    deleted.resize(slot_count);
+    in.read(reinterpret_cast<char*>(deleted.data()),
+            static_cast<std::streamsize>(deleted.size()));
+    return static_cast<bool>(in);
+}
+
 bool WriteMetadata(std::ofstream& out, const VectorTable& table)
 {
-    for (std::size_t id = 0; id < table.count(); ++id)
+    for (std::size_t id = 0; id < table.slot_count(); ++id)
     {
         if (!WriteStr(out, table.metadata(id)))
         {
@@ -90,10 +116,10 @@ bool WriteMetadata(std::ofstream& out, const VectorTable& table)
     return true;
 }
 
-bool ReadMetadata(std::ifstream& in, std::size_t count, std::vector<std::string>& metadata)
+bool ReadMetadata(std::ifstream& in, std::size_t slot_count, std::vector<std::string>& metadata)
 {
-    metadata.reserve(count);
-    for (std::size_t i = 0; i < count; ++i)
+    metadata.reserve(slot_count);
+    for (std::size_t i = 0; i < slot_count; ++i)
     {
         std::string s;
         if (!ReadStr(in, s))
@@ -105,7 +131,7 @@ bool ReadMetadata(std::ifstream& in, std::size_t count, std::vector<std::string>
     return true;
 }
 
-bool ReadHeader(std::ifstream& in, std::uint64_t& dim, std::uint8_t& metric, std::uint64_t& count)
+bool ReadHeader(std::ifstream& in, FileHeader& header)
 {
     char magic[4];
     in.read(magic, 4);
@@ -114,25 +140,52 @@ bool ReadHeader(std::ifstream& in, std::uint64_t& dim, std::uint8_t& metric, std
         return false;
     }
 
-    std::uint32_t version = 0;
-    in.read(reinterpret_cast<char*>(&version), sizeof(version));
-    in.read(reinterpret_cast<char*>(&dim), sizeof(dim));
-    in.read(reinterpret_cast<char*>(&metric), sizeof(metric));
-    in.read(reinterpret_cast<char*>(&count), sizeof(count));
-    if (!in || version != kFormatVersion)
+    in.read(reinterpret_cast<char*>(&header.version), sizeof(header.version));
+    in.read(reinterpret_cast<char*>(&header.dim), sizeof(header.dim));
+    in.read(reinterpret_cast<char*>(&header.metric), sizeof(header.metric));
+    in.read(reinterpret_cast<char*>(&header.slot_count), sizeof(header.slot_count));
+    if (!in || (header.version != 1 && header.version != kFormatVersion))
     {
         return false;
     }
     return true;
 }
 
-// 全扫描 + 最小堆选出 top-K，返回按分数降序的命中列表
+bool ReadPayload(std::ifstream& in, const FileHeader& header,
+                 std::vector<float>& data, std::vector<std::uint8_t>& deleted,
+                 std::vector<std::string>& metadata)
+{
+    const auto dim = static_cast<std::size_t>(header.dim);
+    const auto slot_count = static_cast<std::size_t>(header.slot_count);
+    if (!ReadVectorData(in, dim, slot_count, data))
+    {
+        return false;
+    }
+    if (header.version >= 2)
+    {
+        if (!ReadTombstones(in, slot_count, deleted))
+        {
+            return false;
+        }
+    }
+    else
+    {
+        deleted.assign(slot_count, 0u);
+    }
+    return ReadMetadata(in, slot_count, metadata);
+}
+
+// 全扫描 + 最小堆选出 top-K，返回按分数降序的命中列表；跳过已删除向量
 std::vector<Hit> SelectTopK(const float* query, const VectorTable& table, std::size_t k)
 {
     std::priority_queue<Hit, std::vector<Hit>, MinScoreFirst> heap;
     const std::size_t dim = table.dim();
-    for (std::size_t id = 0; id < table.count(); ++id)
+    for (std::size_t id = 0; id < table.slot_count(); ++id)
     {
+        if (table.deleted(id))
+        {
+            continue;
+        }
         const float score = DotProduct(query, table.vector(id), dim);
         if (heap.size() < k)
         {
@@ -166,6 +219,16 @@ std::size_t VectorDb::Add(const std::vector<float>& vec, const std::string& meta
     return table_.Add(vec, meta);
 }
 
+bool VectorDb::Update(std::size_t id, const std::vector<float>& vec, const std::string& meta)
+{
+    return table_.Update(id, vec, meta);
+}
+
+bool VectorDb::Delete(std::size_t id)
+{
+    return table_.Delete(id);
+}
+
 std::vector<Hit> VectorDb::Search(const std::vector<float>& query, std::size_t k) const
 {
     std::vector<Hit> result;
@@ -194,6 +257,11 @@ std::size_t VectorDb::dim() const
     return table_.dim();
 }
 
+bool VectorDb::deleted(std::size_t id) const
+{
+    return table_.deleted(id);
+}
+
 const std::string& VectorDb::metadata(std::size_t id) const
 {
     return table_.metadata(id);
@@ -213,22 +281,23 @@ bool VectorDb::Save(const std::string& path) const
     }
 
     const auto dim = static_cast<std::uint64_t>(table_.dim());
-    const auto count = static_cast<std::uint64_t>(table_.count());
+    const auto slot_count = static_cast<std::uint64_t>(table_.slot_count());
     const auto metric = MetricToU8(table_.metric());
 
     out.write(kMagic, 4);
     out.write(reinterpret_cast<const char*>(&kFormatVersion), sizeof(kFormatVersion));
     out.write(reinterpret_cast<const char*>(&dim), sizeof(dim));
     out.write(reinterpret_cast<const char*>(&metric), sizeof(metric));
-    out.write(reinterpret_cast<const char*>(&count), sizeof(count));
+    out.write(reinterpret_cast<const char*>(&slot_count), sizeof(slot_count));
     if (!out)
     {
         return false;
     }
 
-    if (count > 0)
+    if (slot_count > 0)
     {
-        return WriteVectorData(out, table_) && WriteMetadata(out, table_);
+        return WriteVectorData(out, table_) && WriteTombstones(out, table_) &&
+               WriteMetadata(out, table_);
     }
     return true;
 }
@@ -241,31 +310,25 @@ bool VectorDb::Load(const std::string& path)
         return false;
     }
 
-    std::uint64_t dim = 0;
-    std::uint64_t count = 0;
-    std::uint8_t metric = 0;
-    if (!ReadHeader(in, dim, metric, count))
+    FileHeader header;
+    if (!ReadHeader(in, header))
     {
         return false;
     }
 
     std::vector<float> data;
+    std::vector<std::uint8_t> deleted;
     std::vector<std::string> metadata;
-    if (count > 0)
+    if (header.slot_count > 0)
     {
-        if (!ReadVectorData(in, static_cast<std::size_t>(dim),
-                            static_cast<std::size_t>(count), data))
-        {
-            return false;
-        }
-        if (!ReadMetadata(in, static_cast<std::size_t>(count), metadata))
+        if (!ReadPayload(in, header, data, deleted, metadata))
         {
             return false;
         }
     }
 
-    table_.set_data(static_cast<std::size_t>(dim), U8ToMetric(metric),
-                    std::move(data), std::move(metadata));
+    table_.set_data(static_cast<std::size_t>(header.dim), U8ToMetric(header.metric),
+                    std::move(data), std::move(metadata), std::move(deleted));
     return true;
 }
 

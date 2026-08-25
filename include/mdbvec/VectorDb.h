@@ -21,10 +21,13 @@ public:
     VectorDb(std::size_t dim, Metric metric);
 
     std::size_t Add(const std::vector<float>& vec, const std::string& meta = {});
+    bool Update(std::size_t id, const std::vector<float>& vec, const std::string& meta = {});
+    bool Delete(std::size_t id);
     std::vector<Hit> Search(const std::vector<float>& query, std::size_t k) const;
 
     std::size_t count() const;
     std::size_t dim() const;
+    bool deleted(std::size_t id) const;
     const std::string& metadata(std::size_t id) const;
 
     bool Save(const std::string& path) const;

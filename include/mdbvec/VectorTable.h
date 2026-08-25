@@ -1,6 +1,7 @@
-// 定长向量表：扁平连续存储（count * dim），按 id 访问
+// 定长向量表：扁平连续存储（slot_count * dim），按 id 访问
 #pragma once
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -21,10 +22,18 @@ public:
     // 追加一个向量，返回其 id；维度不匹配时返回 (size_t)-1
     std::size_t Add(const std::vector<float>& vec, const std::string& meta = {});
 
-    std::size_t count() const;
+    // 软删除：置 tombstone，不搬数据，id 保持稳定
+    bool Delete(std::size_t id);
+
+    // 就地覆盖向量与元数据；对已删除 id 执行则复活
+    bool Update(std::size_t id, const std::vector<float>& vec, const std::string& meta = {});
+
+    std::size_t count() const;        // 存活向量数
+    std::size_t slot_count() const;   // 总槽位数（含 tombstone）
     std::size_t dim() const;
     Metric metric() const;
 
+    bool deleted(std::size_t id) const;
     const float* vector(std::size_t id) const;
     const std::string& metadata(std::size_t id) const;
 
@@ -33,13 +42,16 @@ public:
 
     // 以已就绪数据构建（反序列化用）
     void set_data(std::size_t dim, Metric metric,
-                  std::vector<float> data, std::vector<std::string> metadata);
+                  std::vector<float> data, std::vector<std::string> metadata,
+                  std::vector<std::uint8_t> deleted);
 
 private:
     std::size_t dim_ = 0;
     Metric metric_ = Metric::kCosine;
-    std::vector<float> data_;               // data_[id * dim_, +dim_)
+    std::vector<float> data_;                  // data_[id * dim_, +dim_)
     std::vector<std::string> metadata_;
+    std::vector<std::uint8_t> deleted_;       // 1 = 已软删除
+    std::size_t live_count_ = 0;
 };
 
 }  // namespace mdbvec
