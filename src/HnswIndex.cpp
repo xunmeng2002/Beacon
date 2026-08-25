@@ -53,46 +53,49 @@ std::vector<HnswIndex::Candidate> HnswIndex::SearchLayer(
         return DotProduct(query, table_->vector(id), dim_);
     };
     // 候选集：大根堆按 score，堆顶 = 最近（优先探索）
-    auto closest_first = [&score](std::size_t a, std::size_t b)
+    auto closest_first = [](const Candidate& a, const Candidate& b)
     {
-        return score(a) < score(b);
+        return a.score < b.score;
     };
     // 结果集：小根堆，堆顶 = 最差（淘汰用）
-    auto worst_first = [&score](std::size_t a, std::size_t b)
+    auto worst_first = [](const Candidate& a, const Candidate& b)
     {
-        return score(a) > score(b);
+        return a.score > b.score;
     };
 
     // 已访问标记（slot 数量小，位图代价低）
     std::vector<std::uint8_t> visited(table_->slot_count(), 0);
     visited[entry_id] = 1;
 
-    std::priority_queue<std::size_t, std::vector<std::size_t>, decltype(closest_first)>
+    // 堆内携带已算好的 score：只在发现节点时算一次，避免每次堆比较重算点积
+    std::priority_queue<Candidate, std::vector<Candidate>, decltype(closest_first)>
         candidates(closest_first);
-    std::priority_queue<std::size_t, std::vector<std::size_t>, decltype(worst_first)>
+    std::priority_queue<Candidate, std::vector<Candidate>, decltype(worst_first)>
         best(worst_first);
-    candidates.push(entry_id);
-    best.push(entry_id);
+    const Candidate entry{ entry_id, score(entry_id) };
+    candidates.push(entry);
+    best.push(entry);
 
     while (!candidates.empty())
     {
-        const std::size_t cur = candidates.top();   // 最近候选
+        const Candidate cur = candidates.top();   // 最近候选
         candidates.pop();
-        if (best.size() >= ef && score(cur) < score(best.top()))
+        if (best.size() >= ef && cur.score < best.top().score)
         {
             break;
         }
-        for (std::size_t nbr : links_[cur][static_cast<std::size_t>(layer)])
+        for (std::size_t nbr : links_[cur.id][static_cast<std::size_t>(layer)])
         {
             if (table_->deleted(nbr) || visited[nbr])
             {
                 continue;
             }
             visited[nbr] = 1;
-            if (best.size() < ef || score(nbr) > score(best.top()))
+            const float nscore = score(nbr);
+            if (best.size() < ef || nscore > best.top().score)
             {
-                candidates.push(nbr);
-                best.push(nbr);
+                candidates.push(Candidate{ nbr, nscore });
+                best.push(Candidate{ nbr, nscore });
                 if (best.size() > ef)
                 {
                     best.pop();
@@ -102,21 +105,14 @@ std::vector<HnswIndex::Candidate> HnswIndex::SearchLayer(
     }
 
     // best 堆顶最差；全部弹出为最差在前，反转得降序
-    std::vector<std::size_t> ids;
-    ids.reserve(best.size());
+    std::vector<Candidate> result;
+    result.reserve(best.size());
     while (!best.empty())
     {
-        ids.push_back(best.top());
+        result.push_back(best.top());
         best.pop();
     }
-    std::reverse(ids.begin(), ids.end());
-
-    std::vector<Candidate> result;
-    result.reserve(ids.size());
-    for (std::size_t id : ids)
-    {
-        result.push_back(Candidate{ id, score(id) });
-    }
+    std::reverse(result.begin(), result.end());
     return result;
 }
 

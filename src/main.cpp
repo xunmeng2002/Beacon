@@ -166,8 +166,12 @@ static void DemoIndex()
         }
         db.Add(vec, "vec-" + std::to_string(i));
     }
+    Stopwatch sw_build;
+    sw_build.Start();
     db.EnableIndex();
-    std::cout << "  索引启用=" << db.IndexEnabled() << " 数据量=" << db.count() << "\n";
+    const double build_ms = sw_build.elapsed_ms();
+    std::cout << "  索引启用=" << db.IndexEnabled() << " 数据量=" << db.count()
+              << " 构建耗时=" << build_ms << " ms\n";
 
     const std::size_t queries = 100;
     const std::size_t k = 10;
