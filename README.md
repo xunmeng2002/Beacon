@@ -41,14 +41,14 @@ Demo 输出两类结果：
 
 ```
 include/mdbvec/
-  metrics.h        距离度量：点积、L2 范数、L2 归一化
-  vector_table.h   定长向量表：扁平存储 + 插入时归一化
-  vector_db.h      门面：搜索、持久化、清空
+  Metrics.h       距离度量：点积、L2 范数、L2 归一化
+  VectorTable.h   定长向量表：扁平存储 + 插入时归一化
+  VectorDb.h      门面：搜索、持久化、清空
 src/
-  metrics.cpp      AVX2 / 标量双路径点积
-  vector_table.cpp
-  vector_db.cpp    最小堆 Top-K、save/load
-  main.cpp         demo
+  Metrics.cpp     AVX2 / 标量双路径点积
+  VectorTable.cpp
+  VectorDb.cpp    最小堆 Top-K、Save/Load
+  main.cpp        demo
 ```
 
 ## 快速上手
@@ -56,12 +56,12 @@ src/
 ```cpp
 #include "mdbvec/vector_db.h"
 
-mdbvec::VectorDb db(384, mdbvec::Metric::Cosine);
-db.add({0.1f, 0.2f, /* ... */}, "文档A");
+mdbvec::VectorDb db(384, mdbvec::Metric::kCosine);
+db.Add({ 0.1f, 0.2f, /* ... */ }, "文档A");
 
-auto hits = db.search({0.15f, 0.21f, /* ... */}, 5);  // 返回 Top-5
-db.save("index.mdbv");                                 // 持久化
-db.load("index.mdbv");                                 // 恢复
+auto hits = db.Search({ 0.15f, 0.21f, /* ... */ }, 5);  // 返回 Top-5
+db.Save("index.mdbv");                                  // 持久化
+db.Load("index.mdbv");                                  // 恢复
 ```
 
 ## 路线图
