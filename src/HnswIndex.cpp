@@ -33,16 +33,16 @@ int HnswIndex::RandomLevel()
     return level;
 }
 
-void HnswIndex::AddLink(int layer, std::size_t a, std::size_t b)
+void HnswIndex::AddLink(int layer, std::size_t node, std::size_t neighbor)
 {
-    if (layer < 0 || static_cast<std::size_t>(layer) >= links_[a].size())
+    if (layer < 0 || static_cast<std::size_t>(layer) >= links_[node].size())
     {
         return;
     }
-    std::vector<std::size_t>& neighbors = links_[a][static_cast<std::size_t>(layer)];
-    if (std::find(neighbors.begin(), neighbors.end(), b) == neighbors.end())
+    std::vector<std::size_t>& neighbors = links_[node][static_cast<std::size_t>(layer)];
+    if (std::find(neighbors.begin(), neighbors.end(), neighbor) == neighbors.end())
     {
-        neighbors.push_back(b);
+        neighbors.push_back(neighbor);
     }
 }
 
@@ -178,10 +178,10 @@ void HnswIndex::PruneLinks(std::size_t node, int layer, std::size_t limit)
         return;
     }
     const float* nvec = table_->vector(node);
-    std::sort(neighbors.begin(), neighbors.end(), [this, nvec](std::size_t a, std::size_t b)
+    std::sort(neighbors.begin(), neighbors.end(), [this, nvec](std::size_t id_a, std::size_t id_b)
     {
-        return DotProduct(nvec, table_->vector(a), dim_) >
-               DotProduct(nvec, table_->vector(b), dim_);
+        return DotProduct(nvec, table_->vector(id_a), dim_) >
+               DotProduct(nvec, table_->vector(id_b), dim_);
     });
     neighbors.resize(limit);
 }
@@ -218,16 +218,14 @@ void HnswIndex::Add(std::size_t id)
     int entry = enter_point_;
     for (int layer = top_level_; layer > new_level; --layer)
     {
-        const std::vector<Candidate> ep =
-            SearchLayer(vec, static_cast<std::size_t>(entry), 1, layer);
+        const std::vector<Candidate> ep = SearchLayer(vec, static_cast<std::size_t>(entry), 1, layer);
         entry = static_cast<int>(ep.front().id);
     }
 
     // 从 min(new_level, top_level_) 到 0 逐层建立双向连接并修剪邻居
     for (int layer = std::min(new_level, top_level_); layer >= 0; --layer)
     {
-        const std::vector<Candidate> candidates =
-            SearchLayer(vec, static_cast<std::size_t>(entry), ef_construction_, layer);
+        const std::vector<Candidate> candidates = SearchLayer(vec, static_cast<std::size_t>(entry), ef_construction_, layer);
         const std::vector<std::size_t> neighbors = SelectNeighbors(candidates, m_);
         for (std::size_t nbr : neighbors)
         {

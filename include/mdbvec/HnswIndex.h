@@ -43,11 +43,9 @@ private:
     };
 
     int RandomLevel();
-    void AddLink(int layer, std::size_t a, std::size_t b);
-    std::vector<Candidate> SearchLayer(const float* query, std::size_t entry_id,
-                                       std::size_t ef, int layer) const;
-    std::vector<std::size_t> SelectNeighbors(const std::vector<Candidate>& candidates,
-                                             std::size_t limit) const;
+    void AddLink(int layer, std::size_t node, std::size_t neighbor);
+    std::vector<Candidate> SearchLayer(const float* query, std::size_t entry_id, std::size_t ef, int layer) const;
+    std::vector<std::size_t> SelectNeighbors(const std::vector<Candidate>& candidates, std::size_t limit) const;
     void PruneLinks(std::size_t node, int layer, std::size_t limit);
 
     const VectorTable* table_;
