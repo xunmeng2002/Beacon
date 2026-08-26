@@ -216,6 +216,11 @@ VectorDb::VectorDb(std::size_t dim, Metric metric) : table_(dim, metric)
 {
 }
 
+void VectorDb::Reserve(std::size_t slot_count)
+{
+    table_.Reserve(slot_count);
+}
+
 std::size_t VectorDb::Add(const std::vector<float>& vec, const std::string& meta)
 {
     const std::size_t id = table_.Add(vec, meta);
@@ -282,8 +287,7 @@ bool VectorDb::IndexEnabled() const
     return index_ != nullptr;
 }
 
-std::vector<Hit> VectorDb::SearchIndexed(const std::vector<float>& query, std::size_t k,
-                                         std::size_t ef) const
+std::vector<Hit> VectorDb::SearchIndexed(const std::vector<float>& query, std::size_t k, std::size_t ef) const
 {
     if (!index_)
     {

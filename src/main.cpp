@@ -133,6 +133,7 @@ static void DemoLarge()
     std::normal_distribution<float> dist(0.0f, 1.0f);
 
     VectorDb db(dim, Metric::kCosine);
+    db.Reserve(count);   // 预分配连续存储，避免批量导入时重复扩容
     std::vector<float> vec(dim);
     for (std::size_t i = 0; i < count; ++i)
     {
@@ -169,6 +170,7 @@ static void DemoIndex()
     std::normal_distribution<float> dist(0.0f, 1.0f);
 
     VectorDb db(dim, Metric::kCosine);
+    db.Reserve(count);   // 预分配连续存储，避免批量导入时重复扩容
     std::vector<float> vec(dim);
     for (std::size_t i = 0; i < count; ++i)
     {

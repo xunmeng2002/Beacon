@@ -456,8 +456,7 @@ void HnswIndex::Clear()
     top_level_ = 0;
 }
 
-std::vector<Hit> HnswIndex::Search(const std::vector<float>& query, std::size_t k,
-                                   std::size_t ef) const
+std::vector<Hit> HnswIndex::Search(const std::vector<float>& query, std::size_t k, std::size_t ef) const
 {
     std::vector<Hit> result;
     if (enter_point_ < 0 || k == 0 || query.size() != dim_)
@@ -475,8 +474,7 @@ std::vector<Hit> HnswIndex::Search(const std::vector<float>& query, std::size_t 
     int entry = enter_point_;
     for (int layer = top_level_; layer > 0; --layer)
     {
-        const std::vector<Candidate> ep =
-            SearchLayer(q.data(), static_cast<std::size_t>(entry), 1, layer);
+        const std::vector<Candidate> ep = SearchLayer(q.data(), static_cast<std::size_t>(entry), 1, layer);
         entry = static_cast<int>(ep.front().id);
     }
 

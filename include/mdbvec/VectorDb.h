@@ -22,12 +22,14 @@ public:
     bool Delete(std::size_t id);
     std::vector<Hit> Search(const std::vector<float>& query, std::size_t k) const;
 
+    // 按预期最大条数预分配向量表存储，批量导入前调用避免重复扩容
+    void Reserve(std::size_t slot_count);
+
     // HNSW 索引：EnableIndex 全量构建；Delete/Update 后懒重建
     void EnableIndex(std::size_t m = 16, std::size_t ef_construction = 200);
     void DisableIndex();
     bool IndexEnabled() const;
-    std::vector<Hit> SearchIndexed(const std::vector<float>& query, std::size_t k,
-                                   std::size_t ef = 100) const;
+    std::vector<Hit> SearchIndexed(const std::vector<float>& query, std::size_t k, std::size_t ef = 100) const;
 
     std::size_t count() const;
     std::size_t dim() const;

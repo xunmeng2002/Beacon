@@ -29,6 +29,19 @@ std::size_t VectorTable::Add(const std::vector<float>& vec, const std::string& m
     return metadata_.size() - 1;
 }
 
+void VectorTable::Reserve(std::size_t slot_count)
+{
+    const std::size_t float_count = slot_count * dim_;
+    // 溢出保护：dim_ 为 0 或乘积回绕时放弃预分配，Add 仍会按需扩容
+    if (dim_ == 0 || float_count / dim_ != slot_count)
+    {
+        return;
+    }
+    data_.reserve(float_count);
+    metadata_.reserve(slot_count);
+    deleted_.reserve(slot_count);
+}
+
 bool VectorTable::Delete(std::size_t id)
 {
     if (id >= metadata_.size() || deleted_[id] != 0)

@@ -34,6 +34,9 @@ public:
     // 就地覆盖向量与元数据；对已删除 id 执行则复活
     bool Update(std::size_t id, const std::vector<float>& vec, const std::string& meta = {});
 
+    // 按预期最大槽位数预分配连续存储，避免批量导入时多次扩容重排
+    void Reserve(std::size_t slot_count);
+
     std::size_t count() const;        // 存活向量数
     std::size_t slot_count() const;   // 总槽位数（含 tombstone）
     std::size_t dim() const;
@@ -54,9 +57,10 @@ public:
 private:
     std::size_t dim_ = 0;
     Metric metric_ = Metric::kCosine;
-    std::vector<float> data_;                  // data_[id * dim_, +dim_)
+    // data_[id * dim_, +dim_)
+    std::vector<float> data_;
     std::vector<std::string> metadata_;
-    std::vector<std::uint8_t> deleted_;       // 1 = 已软删除
+    std::vector<std::uint8_t> deleted_;
     std::size_t live_count_ = 0;
 };
 
