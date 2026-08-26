@@ -1,0 +1,3 @@
+@echo off
+echo Add CMakeCommon submodule...
+git submodule add https://gitee.com/xunmeng200/CMakeCommon.git submodules/CMakeCommon
