@@ -30,13 +30,13 @@ cmake --build out/build/x64-Release --config Release
 **通用配置**（无 vcpkg / 其他平台）：
 
 ```bash
-cmake -S . -B build -D MDBVEC_ENABLE_BENCH=OFF    # 关闭 hnswlib 对比基准，库本体零第三方依赖
+cmake -S . -B build -D MDBVEC_ENABLE_BENCH=OFF -D BUILD_UNIT_TESTS=OFF    # 关闭对比基准与单元测试，库本体零第三方依赖
 cmake --build build --config Release
 ```
 
 > x86_64 平台自动追加 `/arch:AVX2`（MSVC）或 `-mavx2`（GCC/Clang）。
 >
-> hnswlib 对比基准（`mdbvec_bench`）需要 vcpkg toolchain（`vcpkg.json` 声明 `hnswlib` 依赖）。`MDBVEC_ENABLE_BENCH=OFF` 时纯标准库编译，库本体不引入任何第三方依赖。
+> hnswlib 对比基准（`mdbvec_bench`）与单元测试（`UnitTests`，GoogleTest）都需要 vcpkg toolchain（`vcpkg.json` 声明 `hnswlib`、`gtest` 依赖）。两者均关闭时纯标准库编译，库本体不引入任何第三方依赖。
 
 ## 运行 Demo
 
@@ -54,6 +54,15 @@ Demo 输出四类结果：
 3. **30k × 64 维 HNSW vs 暴力**：recall@10 与延迟对比 + 增量删 3000 节点耗时（毫秒级）+ 含索引持久化重载免重建验证
 4. **并发读写压力**：4 读者并发 `SearchIndexed` + 2 写者 Add/Update/Delete，断言最终 `count` 确定一致（与线程交错顺序无关）
 
+## 运行单元测试
+
+单元测试使用 GoogleTest，覆盖度量 / 向量表 / HNSW 索引 / 门面四个模块（`test/unittest/`）。`BUILD_UNIT_TESTS` 默认开启，全部用例通过时退出码为 0：
+
+```bash
+./bin/Release/UnitTests.exe            # Windows
+./bin/Release/UnitTests                # Linux/macOS
+```
+
 ## 目录结构
 
 库本体零第三方依赖，构建产物输出到 `bin/$<CONFIG>` / `lib/$<CONFIG>`：
@@ -70,6 +79,7 @@ src/MdbVector/            对内实现（CMake 仅 PUBLIC 暴露 include/，此�
   HnswIndex.cpp   HNSW 建图/检索
   VectorDb.cpp    最小堆 Top-K、Save/Load
 test/TestMdbVector/     Demo 可执行文件源码（TestMdbVector.cpp，四类演示）
+test/unittest/          GoogleTest 单元测试（Metrics / VectorTable / HnswIndex / VectorDb，需 vcpkg 提供 gtest）
 bench/                  与 hnswlib 的对比基准（需 vcpkg，默认开启，可 MDBVEC_ENABLE_BENCH=OFF 关闭）
 bin/  lib/              构建产物（按 $<CONFIG> 分目录：Release/Debug）
 ```

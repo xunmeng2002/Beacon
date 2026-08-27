@@ -75,3 +75,9 @@ if(MDBVEC_ENABLE_BENCH)
   add_executable(mdbvec_bench bench/bench_compare.cpp)
   target_link_libraries(mdbvec_bench PRIVATE MdbVectorStatic hnswlib::hnswlib)
 endif()
+
+# 单元测试（GoogleTest，需 vcpkg toolchain；无 vcpkg 构建时与 MDBVEC_ENABLE_BENCH 同理需显式关闭）
+option(BUILD_UNIT_TESTS "Build unit tests (GoogleTest, requires vcpkg)" ON)
+if(BUILD_UNIT_TESTS)
+    add_subdirectory(test/unittest)
+endif()
