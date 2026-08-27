@@ -12,34 +12,46 @@
 - **二进制持久化**：`magic("MDBV") + version + dim + metric + count + 数据 + 元数据`，加载时校验魔数与版本
 - **元数据**：每个向量可携带任意字符串（文档 id、原文片段等）
 - **CRUD**：软删除（tombstone，数据不动、id 稳定）+ 就地更新（对已删除 id 执行则复活）
+- **并发支持**：`VectorDb` 门面 `shared_mutex` 读写锁——读读并行、读写/写写互斥；检索 visited 池为线程局部，多线程查询共享读锁安全
 - **HNSW 索引**：分层可导航小世界图，近似检索（`ef` 可调）；Delete/Update 走节点级增量维护（重连邻居保连通），暴力检索保留作精确对照
 - **持久化格式版本化**：v2 起记录 tombstone；v3 起含 HNSW 索引段（向量段权威、索引段为可校验缓存，损坏即降级懒重建）；向后兼容 v1/v2
 
 ## 构建
 
-需要 **CMake ≥ 3.16** 和任一 C++17 编译器（MSVC / GCC / Clang）。
+需要 **CMake ≥ 3.20**（使用 `--preset` 需 ≥ 3.21）和任一 C++17 编译器（MSVC / GCC / Clang）。
+
+**Windows / MSVC（推荐）**——使用 CMakePresets，内置 Ninja + vcpkg 工具链（需 `VCPKG_ROOT` 环境变量）：
 
 ```bash
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64   # Windows / MSVC
-# 或
-cmake -S . -B build                                     # 默认生成器
+cmake --preset x64-Release          # 或 x64-Debug
+cmake --build out/build/x64-Release --config Release
+```
+
+**通用配置**（无 vcpkg / 其他平台）：
+
+```bash
+cmake -S . -B build -D MDBVEC_ENABLE_BENCH=OFF    # 关闭 hnswlib 对比基准，库本体零第三方依赖
 cmake --build build --config Release
 ```
 
 > x86_64 平台自动追加 `/arch:AVX2`（MSVC）或 `-mavx2`（GCC/Clang）。
+>
+> hnswlib 对比基准（`mdbvec_bench`）需要 vcpkg toolchain（`vcpkg.json` 声明 `hnswlib` 依赖）。`MDBVEC_ENABLE_BENCH=OFF` 时纯标准库编译，库本体不引入任何第三方依赖。
 
 ## 运行 Demo
 
 ```bash
-./build/Release/mdbvec_demo.exe        # Windows
-./build/mdbvec_demo                    # Linux/macOS
+./out/build/x64-Release/mdbvec_demo.exe    # Windows（x64-Release preset）
+./build/Release/mdbvec_demo.exe            # Windows（普通配置构建）
+./build/mdbvec_demo                        # Linux/macOS
 ```
 
-Demo 输出三类结果：
+Demo 输出四类结果：
 
 1. **3 维余弦检索 + 持久化往返**：验证归一化、Top-K 排序、软删除/更新、save/load 正确性
-2. **10k × 64 维暴力检索延迟**：量测全扫描耗时（AVX2 下约 0.2 ms）
+2. **10k × 64 维暴力检索延迟**：量测全扫描耗时（AVX2 下约 0.13 ms）
 3. **30k × 64 维 HNSW vs 暴力**：recall@10 与延迟对比 + 增量删 3000 节点耗时（毫秒级）+ 含索引持久化重载免重建验证
+4. **并发读写压力**：4 读者并发 `SearchIndexed` + 2 写者 Add/Update/Delete，断言最终 `count` 确定一致（与线程交错顺序无关）
 
 ## 目录结构
 
@@ -86,4 +98,4 @@ db.Load("index.mdbv");                                  // 恢复
 - [ ] **混合检索**：结合 BM25 关键词检索，文本召回更稳
 - [ ] **RAG 示例**：金融文档切片 → embedding → 本库检索 → 拼接到 LLM 提示词
 - [ ] **mmap 持久化**：大文件免加载全部进内存，支持冷启动即查
-- [ ] **基准数据**：与 faiss / hnswlib 对比召回率与延迟，产出简历可用数据
+- [x] **基准数据**：与 hnswlib 对比召回率与延迟（`bench/bench_compare.cpp`；100k×128 下 recall 0.331 vs 0.301）
