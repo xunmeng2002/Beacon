@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace mdbvec {
+namespace beacon {
 
 enum class Metric
 {
@@ -65,4 +65,4 @@ private:
     std::size_t live_count_ = 0;
 };
 
-}  // namespace mdbvec
+}  // namespace beacon

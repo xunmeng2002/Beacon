@@ -1,4 +1,4 @@
-# MdbVector
+# Beacon
 
 自研的**内存向量数据库**（C++20）。为 RAG（检索增强生成）场景提供基于余弦相似度 / 内积的 Top-K 检索，并支持二进制持久化。作为个人项目，重点在于吃透向量索引与检索的底层原理，而非堆砌依赖。
 
@@ -30,21 +30,21 @@ cmake --build out/build/x64-Release --config Release
 **通用配置**（无 vcpkg / 其他平台）：
 
 ```bash
-cmake -S . -B build -D MDBVEC_ENABLE_BENCH=OFF -D BUILD_UNIT_TESTS=OFF    # 关闭对比基准与单元测试，库本体零第三方依赖
+cmake -S . -B build -D BEACON_ENABLE_BENCH=OFF -D BUILD_UNIT_TESTS=OFF    # 关闭对比基准与单元测试，库本体零第三方依赖
 cmake --build build --config Release
 ```
 
 > x86_64 平台自动追加 `/arch:AVX2`（MSVC）或 `-mavx2`（GCC/Clang）。
 >
-> hnswlib 对比基准（`mdbvec_bench`）与单元测试（`UnitTests`，GoogleTest）都需要 vcpkg toolchain（`vcpkg.json` 声明 `hnswlib`、`gtest` 依赖）。两者均关闭时纯标准库编译，库本体不引入任何第三方依赖。
+> hnswlib 对比基准（`beacon_bench`）与单元测试（`UnitTests`，GoogleTest）都需要 vcpkg toolchain（`vcpkg.json` 声明 `hnswlib`、`gtest` 依赖）。两者均关闭时纯标准库编译，库本体不引入任何第三方依赖。
 
 ## 运行 Demo
 
 构建产物统一输出到 `bin/$<CONFIG>`（可执行文件）与 `lib/$<CONFIG>`（静态库），preset 与通用配置一致：
 
 ```bash
-./bin/Release/TestMdbVector.exe            # Windows（x64-Release preset 或普通配置构建）
-./bin/Release/TestMdbVector                # Linux/macOS（配置时 -D CMAKE_BUILD_TYPE=Release）
+./bin/Release/TestBeacon.exe            # Windows（x64-Release preset 或普通配置构建）
+./bin/Release/TestBeacon                # Linux/macOS（配置时 -D CMAKE_BUILD_TYPE=Release）
 ```
 
 Demo 输出四类结果：
@@ -68,28 +68,28 @@ Demo 输出四类结果：
 库本体零第三方依赖，构建产物输出到 `bin/$<CONFIG>` / `lib/$<CONFIG>`：
 
 ```
-include/MdbVector/        对外 API（消费方唯一包含入口，安装即此目录）
+include/Beacon/        对外 API（消费方唯一包含入口，安装即此目录）
   Metrics.h       距离度量：点积、L2 范数、L2 归一化
   VectorTable.h   定长向量表 + 公共类型 Metric / Hit
   HnswIndex.h     HNSW 分层小世界图索引（近似检索）
   VectorDb.h      门面：精确/近似搜索、持久化、清空（主入口）
-src/MdbVector/            对内实现（CMake 仅 PUBLIC 暴露 include/，此处不进消费方包含路径）
+src/Beacon/            对内实现（CMake 仅 PUBLIC 暴露 include/，此处不进消费方包含路径）
   Metrics.cpp     AVX2 / 标量双路径点积
   VectorTable.cpp
   HnswIndex.cpp   HNSW 建图/检索
   VectorDb.cpp    最小堆 Top-K、Save/Load
-test/TestMdbVector/     Demo 可执行文件源码（TestMdbVector.cpp，四类演示）
+test/TestBeacon/     Demo 可执行文件源码（TestBeacon.cpp，四类演示）
 test/unittest/          GoogleTest 单元测试（Metrics / VectorTable / HnswIndex / VectorDb，需 vcpkg 提供 gtest）
-bench/                  与 hnswlib 的对比基准（需 vcpkg，默认开启，可 MDBVEC_ENABLE_BENCH=OFF 关闭）
+bench/                  与 hnswlib 的对比基准（需 vcpkg，默认开启，可 BEACON_ENABLE_BENCH=OFF 关闭）
 bin/  lib/              构建产物（按 $<CONFIG> 分目录：Release/Debug）
 ```
 
 ## 快速上手
 
 ```cpp
-#include "MdbVector/VectorDb.h"
+#include "Beacon/VectorDb.h"
 
-mdbvec::VectorDb db(384, mdbvec::Metric::kCosine);
+beacon::VectorDb db(384, beacon::Metric::kCosine);
 db.Add({ 0.1f, 0.2f, /* ... */ }, "文档A");
 
 db.Update(id, { 0.2f, 0.1f, /* ... */ }, "文档A(修订)");  // 就地更新

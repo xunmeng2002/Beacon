@@ -1,4 +1,4 @@
-#include "MdbVector/VectorTable.h"
+#include "Beacon/VectorTable.h"
 
 #include <gtest/gtest.h>
 
@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-using namespace mdbvec;
+using namespace beacon;
 
 TEST(VectorTableTest, AddReturnsSequentialIdsAndRejectsDimMismatch)
 {

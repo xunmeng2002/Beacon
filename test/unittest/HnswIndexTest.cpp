@@ -1,4 +1,4 @@
-#include "MdbVector/HnswIndex.h"
+#include "Beacon/HnswIndex.h"
 
 #include <gtest/gtest.h>
 
@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-using namespace mdbvec;
+using namespace beacon;
 
 namespace
 {

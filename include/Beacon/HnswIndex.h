@@ -6,9 +6,9 @@
 #include <random>
 #include <vector>
 
-#include "MdbVector/VectorTable.h"
+#include "Beacon/VectorTable.h"
 
-namespace mdbvec {
+namespace beacon {
 
 class HnswIndex
 {
@@ -77,4 +77,4 @@ private:
     mutable std::uniform_real_distribution<double> level_rand_;
 };
 
-}  // namespace mdbvec
+}  // namespace beacon

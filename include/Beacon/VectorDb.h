@@ -1,8 +1,8 @@
 // 向量数据库门面：向量表 + 暴力 top-K 检索 + 可选 HNSW 索引 + 二进制持久化
 #pragma once
-#include "MdbVector/HnswIndex.h"
+#include "Beacon/HnswIndex.h"
 
-#include "MdbVector/VectorTable.h"
+#include "Beacon/VectorTable.h"
 
 #include <cstddef>
 #include <memory>
@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-namespace mdbvec {
+namespace beacon {
 
 class VectorDb
 {
@@ -50,4 +50,4 @@ private:
     mutable std::shared_mutex rw_mutex_;   // 门面读写锁：所有公有方法均须持有，读共享/写独占
 };
 
-}  // namespace mdbvec
+}  // namespace beacon

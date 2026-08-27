@@ -1,7 +1,7 @@
-// MdbVector（自研 HNSW）与 hnswlib 基准对比：同一数据/查询下比 build_ms / recall@k / ms-query
-// 构建需 vcpkg toolchain（MDBVEC_ENABLE_BENCH=ON），见 CMakeLists 与 README。
-#include "MdbVector/Metrics.h"
-#include "MdbVector/VectorDb.h"
+// Beacon（自研 HNSW）与 hnswlib 基准对比：同一数据/查询下比 build_ms / recall@k / ms-query
+// 构建需 vcpkg toolchain（BEACON_ENABLE_BENCH=ON），见 CMakeLists 与 README。
+#include "Beacon/Metrics.h"
+#include "Beacon/VectorDb.h"
 
 #include "hnswlib/hnswlib.h"
 
@@ -38,7 +38,7 @@ struct BenchParams
     std::size_t query_count;
 };
 
-// 数据 = 原样（喂 MdbVector，内部余弦归一化）+ L2 归一化副本（喂 hnswlib 与暴力基准）
+// 数据 = 原样（喂 Beacon，内部余弦归一化）+ L2 归一化副本（喂 hnswlib 与暴力基准）
 struct Dataset
 {
     std::size_t count;
@@ -61,7 +61,7 @@ Dataset GenerateDataset(std::size_t count, std::size_t dim, std::uint32_t seed)
             x = dist(rng);
         }
         std::copy(row.begin(), row.end(), raw.begin() + static_cast<std::ptrdiff_t>(id * dim));
-        mdbvec::L2Normalize(row.data(), dim);
+        beacon::L2Normalize(row.data(), dim);
         std::copy(row.begin(), row.end(), normalized.begin() + static_cast<std::ptrdiff_t>(id * dim));
     }
     return Dataset{ count, dim, std::move(raw), std::move(normalized) };
@@ -101,7 +101,7 @@ std::vector<std::size_t> BruteForceTopK(const std::vector<float>& query_norm, co
                         std::vector<std::pair<float, std::size_t>>, WorstFirst> heap;
     for (std::size_t id = 0; id < ds.count; ++id)
     {
-        const float score = mdbvec::DotProduct(query_norm.data(),
+        const float score = beacon::DotProduct(query_norm.data(),
                                                ds.normalized.data() + id * ds.dim, ds.dim);
         if (heap.size() < k)
         {
@@ -143,10 +143,10 @@ struct BenchResult
     double recall;
 };
 
-BenchResult RunMdbVector(const Dataset& ds, const std::vector<std::vector<float>>& raw_queries,
+BenchResult RunBeacon(const Dataset& ds, const std::vector<std::vector<float>>& raw_queries,
                          const BenchParams& p, const std::vector<std::vector<std::size_t>>& ground_truth)
 {
-    using namespace mdbvec;
+    using namespace beacon;
     VectorDb db(p.dim, Metric::kCosine);
     db.Reserve(p.count);
     std::vector<float> row(p.dim);
@@ -236,7 +236,7 @@ void RunCase(const BenchParams& p)
     std::vector<std::vector<float>> norm_queries = raw_queries;
     for (std::vector<float>& q : norm_queries)
     {
-        mdbvec::L2Normalize(q.data(), q.size());
+        beacon::L2Normalize(q.data(), q.size());
     }
 
     std::vector<std::vector<std::size_t>> ground_truth;
@@ -246,14 +246,14 @@ void RunCase(const BenchParams& p)
         ground_truth.push_back(BruteForceTopK(norm_queries[i], ds, p.k));
     }
 
-    const BenchResult mine = RunMdbVector(ds, raw_queries, p, ground_truth);
+    const BenchResult mine = RunBeacon(ds, raw_queries, p, ground_truth);
     const BenchResult theirs = RunHnswlib(ds, norm_queries, p, ground_truth);
 
     const std::string recall_col = "recall@" + std::to_string(p.k);
     std::cout << "  " << std::left << std::setw(20) << "路径" << std::right
               << std::setw(12) << "build_ms" << std::setw(12) << recall_col
               << std::setw(12) << "ms/query" << "\n";
-    std::cout << "  " << std::left << std::setw(20) << "mdbvec(自研HNSW)" << std::right
+    std::cout << "  " << std::left << std::setw(20) << "beacon(自研HNSW)" << std::right
               << std::setw(12) << Fmt1(mine.build_ms)
               << std::setw(12) << Fmt3(mine.recall)
               << std::setw(12) << Fmt1(mine.query_ms_total / p.query_count) << "\n";

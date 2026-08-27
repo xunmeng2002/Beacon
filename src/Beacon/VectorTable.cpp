@@ -1,11 +1,11 @@
-#include "MdbVector/VectorTable.h"
+#include "Beacon/VectorTable.h"
 
-#include "MdbVector/Metrics.h"
+#include "Beacon/Metrics.h"
 
 #include <algorithm>
 #include <utility>
 
-namespace mdbvec {
+namespace beacon {
 
 VectorTable::VectorTable(std::size_t dim, Metric metric) : dim_(dim), metric_(metric)
 {
@@ -134,4 +134,4 @@ void VectorTable::set_data(std::size_t dim, Metric metric,
     }
 }
 
-}  // namespace mdbvec
+}  // namespace beacon

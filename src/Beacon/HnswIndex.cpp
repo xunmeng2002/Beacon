@@ -1,6 +1,6 @@
-#include "MdbVector/HnswIndex.h"
+#include "Beacon/HnswIndex.h"
 
-#include "MdbVector/Metrics.h"
+#include "Beacon/Metrics.h"
 
 #include <algorithm>
 #include <cmath>
@@ -13,7 +13,7 @@
 #include <immintrin.h>
 #endif
 
-namespace mdbvec {
+namespace beacon {
 
 HnswIndex::HnswIndex(const VectorTable* table, std::size_t m, std::size_t ef_construction)
     : table_(table),
@@ -617,4 +617,4 @@ std::size_t HnswIndex::node_count() const
     return n;
 }
 
-}  // namespace mdbvec
+}  // namespace beacon

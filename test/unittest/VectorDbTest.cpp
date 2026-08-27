@@ -1,4 +1,4 @@
-#include "MdbVector/VectorDb.h"
+#include "Beacon/VectorDb.h"
 
 #include <gtest/gtest.h>
 
@@ -12,7 +12,7 @@
 #include <thread>
 #include <vector>
 
-using namespace mdbvec;
+using namespace beacon;
 
 namespace
 {

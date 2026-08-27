@@ -8,4 +8,4 @@ add_application(UnitTests ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR
 target_link_libraries(UnitTests PRIVATE
     GTest::gtest
     GTest::gtest_main
-    MdbVectorStatic)
+    BeaconStatic)

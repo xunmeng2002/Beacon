@@ -1,4 +1,4 @@
-#include "MdbVector/VectorDb.h"
+#include "Beacon/VectorDb.h"
 
 #include <atomic>
 #include <chrono>
@@ -56,7 +56,7 @@ int main()
 // 3 维余弦检索 + CRUD + 持久化往返
 static void DemoSmall()
 {
-    using namespace mdbvec;
+    using namespace beacon;
     std::cout << "==== 演示 1：3 维余弦检索 + CRUD ====\n";
 
     const std::string path = "demo_small.mdbv";
@@ -128,7 +128,7 @@ static void DemoSmall()
 // 10k 条 64 维暴力检索，量测延迟
 static void DemoLarge()
 {
-    using namespace mdbvec;
+    using namespace beacon;
     std::cout << "==== 演示 2：10k x 64 维暴力检索延迟 ====\n";
 
     const std::size_t count = 10000;
@@ -165,7 +165,7 @@ static void DemoLarge()
 // HNSW 近似检索 vs 暴力检索：recall@10 与延迟
 static void DemoIndex()
 {
-    using namespace mdbvec;
+    using namespace beacon;
     std::cout << "==== 演示 3：HNSW 近似检索 vs 暴力检索 ====\n";
 
     const std::size_t count = 30000;
@@ -310,7 +310,7 @@ static void DemoIndex()
 // 锁保证每操作原子，故结果与线程交错顺序无关，可确定性校验。
 static void DemoConcurrent()
 {
-    using namespace mdbvec;
+    using namespace beacon;
     std::cout << "==== 演示 4：并发读写（shared_mutex + thread_local visited）====\n";
 
     const std::size_t dim = 64;

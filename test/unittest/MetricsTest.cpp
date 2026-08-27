@@ -1,4 +1,4 @@
-#include "MdbVector/Metrics.h"
+#include "Beacon/Metrics.h"
 
 #include <gtest/gtest.h>
 
@@ -6,7 +6,7 @@
 #include <random>
 #include <vector>
 
-using namespace mdbvec;
+using namespace beacon;
 
 TEST(MetricsTest, DotProductMatchesNaiveReference)
 {

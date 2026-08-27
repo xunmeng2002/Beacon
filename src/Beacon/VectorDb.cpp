@@ -1,6 +1,6 @@
-#include "MdbVector/VectorDb.h"
+#include "Beacon/VectorDb.h"
 
-#include "MdbVector/Metrics.h"
+#include "Beacon/Metrics.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -8,7 +8,7 @@
 #include <memory>
 #include <queue>
 
-namespace mdbvec {
+namespace beacon {
 
 namespace
 {
@@ -454,4 +454,4 @@ bool VectorDb::Load(const std::string& path)
     return true;
 }
 
-}  // namespace mdbvec
+}  // namespace beacon

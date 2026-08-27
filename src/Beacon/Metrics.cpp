@@ -1,4 +1,4 @@
-#include "MdbVector/Metrics.h"
+#include "Beacon/Metrics.h"
 
 #include <cmath>
 
@@ -6,7 +6,7 @@
 #include <immintrin.h>
 #endif
 
-namespace mdbvec {
+namespace beacon {
 
 #if defined(__AVX2__)
 
@@ -74,4 +74,4 @@ void L2Normalize(float* vec, std::size_t n)
     }
 }
 
-}  // namespace mdbvec
+}  // namespace beacon
