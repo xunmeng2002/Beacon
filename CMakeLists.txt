@@ -81,3 +81,22 @@ option(BUILD_UNIT_TESTS "Build unit tests (GoogleTest, requires vcpkg)" ON)
 if(BUILD_UNIT_TESTS)
     add_subdirectory(test/unittest)
 endif()
+
+# Python 绑定（pybind11，需 `pip install pybind11`；默认关闭，库本体保持零第三方依赖）
+option(BEACON_ENABLE_PYTHON "Build Python bindings (pybind11; requires: pip install pybind11)" ON)
+if(BEACON_ENABLE_PYTHON)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module)
+  # pybind11 由 pip 提供，用 `python -m pybind11 --cmakedir` 定位其 CMake 配置目录
+  execute_process(
+    COMMAND "${Python3_EXECUTABLE}" -m pybind11 --cmakedir
+    RESULT_VARIABLE BEACON_PYBIND11_RC
+    OUTPUT_VARIABLE BEACON_PYBIND11_DIR
+    ERROR_QUIET)
+  if(NOT BEACON_PYBIND11_RC EQUAL 0)
+    message(FATAL_ERROR "BEACON_ENABLE_PYTHON=ON 需要 pybind11：请先运行 `pip install pybind11`")
+  endif()
+  string(STRIP "${BEACON_PYBIND11_DIR}" BEACON_PYBIND11_DIR)
+  set(pybind11_DIR "${BEACON_PYBIND11_DIR}" CACHE PATH "pybind11 CMake 配置目录（来自 pip）" FORCE)
+  find_package(pybind11 CONFIG REQUIRED)
+  add_subdirectory(bindings/python)
+endif()

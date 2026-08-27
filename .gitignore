@@ -6,3 +6,9 @@ lib/
 out.txt
 /.vs
 /.vscode/
+
+# Python（pytest 字节码缓存与测试缓存）
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/

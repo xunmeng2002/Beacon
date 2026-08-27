@@ -63,6 +63,41 @@ Demo 输出四类结果：
 ./bin/Release/UnitTests                # Linux/macOS
 ```
 
+## Python 绑定
+
+门面 `VectorDb` 经 pybind11 导出为模块 `beacon`，向量入参支持 `list` 与 numpy 数组。默认关闭（`BEACON_ENABLE_PYTHON=OFF`），库本体保持零第三方依赖：
+
+```bash
+python -m pip install pybind11            # 一次性安装（PyPI）
+cmake --preset x64-Release -D BEACON_ENABLE_PYTHON=ON
+cmake --build out/build/x64-Release --config Release
+```
+
+产物 `bin/Release/beacon.cp311-win_amd64.pyd`（Windows；`cp311-win_amd64` 为 SOABI 后缀，随 Python 版本变化，导入名始终是 `beacon`），用构建时同一个 Python 导入：
+
+```python
+import sys
+sys.path.insert(0, "bin/Release")      # 或把该目录加进 PYTHONPATH
+import beacon
+
+db = beacon.VectorDb(384, beacon.Metric.kCosine)
+db.add([0.1, 0.2, ...], "文档A")         # list 或 numpy.float32 数组
+db.enable_index()
+hits = db.search_indexed(query, 5, ef=100)   # -> [Hit(id=..., score=...)]
+db.save("index.beacon")
+```
+
+> **注意**：`.pyd` 绑定的是构建时 `find_package(Python3)` 找到的解释器（本机 `C:\Python\Python311`）；若 RAG 用虚拟环境，请用该环境的 Python 进行配置/构建。numpy 2.x 兼容（pybind11 ≥ 3.0）。
+
+运行绑定测试（pytest，需 `pip install pytest`；也可直接运行脚本，如 VS 里点运行）：
+
+```bash
+python -m pytest test/python -v                 # pytest 方式，20 个用例
+python test/python/test_python_bindings.py      # 直接运行方式
+```
+
+两种方式都覆盖：CRUD / 精确与近似检索 / 持久化 / 边界与异常。
+
 ## 目录结构
 
 库本体零第三方依赖，构建产物输出到 `bin/$<CONFIG>` / `lib/$<CONFIG>`：
@@ -80,6 +115,8 @@ src/Beacon/            对内实现（CMake 仅 PUBLIC 暴露 include/，此处�
   VectorDb.cpp    最小堆 Top-K、Save/Load
 test/TestBeacon/     Demo 可执行文件源码（TestBeacon.cpp，四类演示）
 test/unittest/          GoogleTest 单元测试（Metrics / VectorTable / HnswIndex / VectorDb，需 vcpkg 提供 gtest）
+test/python/            Python 绑定 pytest 测试（test_python_bindings.py，可直接运行也可 pytest）
+bindings/python/        pybind11 绑定模块 beacon（需 pip install pybind11，BEACON_ENABLE_PYTHON=ON 开启）
 bench/                  与 hnswlib 的对比基准（需 vcpkg，默认开启，可 BEACON_ENABLE_BENCH=OFF 关闭）
 bin/  lib/              构建产物（按 $<CONFIG> 分目录：Release/Debug）
 ```
@@ -109,7 +146,7 @@ db.Load("index.beacon");                                  // 恢复
 - [x] **HNSW 索引**：分层可导航小世界图，近似检索已实现（M=16 / ef 可调 / 启发式选边）
 - [x] **HNSW 增量维护**：节点级删除/更新，重连邻居保持连通，替代全量重建
 - [x] **索引持久化**：格式 v3 含索引段（校验失败降级懒重建），冷启动免重建
-- [ ] **pybind11 绑定**：提供 Python API，供 RAG 流水线直接调用
+- [x] **pybind11 绑定**：提供 Python API，供 RAG 流水线直接调用
 - [ ] **混合检索**：结合 BM25 关键词检索，文本召回更稳
 - [ ] **RAG 示例**：金融文档切片 → embedding → 本库检索 → 拼接到 LLM 提示词
 - [ ] **mmap 持久化**：大文件免加载全部进内存，支持冷启动即查
