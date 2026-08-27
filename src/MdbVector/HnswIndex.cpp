@@ -1,6 +1,6 @@
-#include "mdbvec/HnswIndex.h"
+#include "MdbVector/HnswIndex.h"
 
-#include "mdbvec/Metrics.h"
+#include "MdbVector/Metrics.h"
 
 #include <algorithm>
 #include <cmath>

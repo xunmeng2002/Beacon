@@ -6,7 +6,7 @@
 #include <random>
 #include <vector>
 
-#include "mdbvec/VectorTable.h"
+#include "MdbVector/VectorTable.h"
 
 namespace mdbvec {
 

@@ -1,8 +1,8 @@
 // 向量数据库门面：向量表 + 暴力 top-K 检索 + 可选 HNSW 索引 + 二进制持久化
 #pragma once
-#include "mdbvec/HnswIndex.h"
+#include "MdbVector/HnswIndex.h"
 
-#include "mdbvec/VectorTable.h"
+#include "MdbVector/VectorTable.h"
 
 #include <cstddef>
 #include <memory>

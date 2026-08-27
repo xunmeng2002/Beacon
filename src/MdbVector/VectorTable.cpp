@@ -1,6 +1,6 @@
-#include "mdbvec/VectorTable.h"
+#include "MdbVector/VectorTable.h"
 
-#include "mdbvec/Metrics.h"
+#include "MdbVector/Metrics.h"
 
 #include <algorithm>
 #include <utility>

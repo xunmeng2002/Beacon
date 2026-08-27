@@ -1,6 +1,6 @@
 # MdbVector
 
-自研的**内存向量数据库**（C++17）。为 RAG（检索增强生成）场景提供基于余弦相似度 / 内积的 Top-K 检索，并支持二进制持久化。作为个人项目，重点在于吃透向量索引与检索的底层原理，而非堆砌依赖。
+自研的**内存向量数据库**（C++20）。为 RAG（检索增强生成）场景提供基于余弦相似度 / 内积的 Top-K 检索，并支持二进制持久化。作为个人项目，重点在于吃透向量索引与检索的底层原理，而非堆砌依赖。
 
 ## 特性
 
@@ -18,7 +18,7 @@
 
 ## 构建
 
-需要 **CMake ≥ 3.20**（使用 `--preset` 需 ≥ 3.21）和任一 C++17 编译器（MSVC / GCC / Clang）。
+需要 **CMake ≥ 3.20**（使用 `--preset` 需 ≥ 3.21）和任一 C++20 编译器（MSVC / GCC / Clang）。
 
 **Windows / MSVC（推荐）**——使用 CMakePresets，内置 Ninja + vcpkg 工具链（需 `VCPKG_ROOT` 环境变量）：
 
@@ -40,10 +40,11 @@ cmake --build build --config Release
 
 ## 运行 Demo
 
+构建产物统一输出到 `bin/$<CONFIG>`（可执行文件）与 `lib/$<CONFIG>`（静态库），preset 与通用配置一致：
+
 ```bash
-./out/build/x64-Release/mdbvec_demo.exe    # Windows（x64-Release preset）
-./build/Release/mdbvec_demo.exe            # Windows（普通配置构建）
-./build/mdbvec_demo                        # Linux/macOS
+./bin/Release/TestMdbVector.exe            # Windows（x64-Release preset 或普通配置构建）
+./bin/Release/TestMdbVector                # Linux/macOS（配置时 -D CMAKE_BUILD_TYPE=Release）
 ```
 
 Demo 输出四类结果：
@@ -55,24 +56,28 @@ Demo 输出四类结果：
 
 ## 目录结构
 
+库本体零第三方依赖，构建产物输出到 `bin/$<CONFIG>` / `lib/$<CONFIG>`：
+
 ```
-include/mdbvec/
+include/MdbVector/        对外 API（消费方唯一包含入口，安装即此目录）
   Metrics.h       距离度量：点积、L2 范数、L2 归一化
-  VectorTable.h   定长向量表：扁平存储 + 归一化 + 软删除/就地更新
+  VectorTable.h   定长向量表 + 公共类型 Metric / Hit
   HnswIndex.h     HNSW 分层小世界图索引（近似检索）
-  VectorDb.h      门面：精确/近似搜索、持久化、清空
-src/
+  VectorDb.h      门面：精确/近似搜索、持久化、清空（主入口）
+src/MdbVector/            对内实现（CMake 仅 PUBLIC 暴露 include/，此处不进消费方包含路径）
   Metrics.cpp     AVX2 / 标量双路径点积
   VectorTable.cpp
   HnswIndex.cpp   HNSW 建图/检索
   VectorDb.cpp    最小堆 Top-K、Save/Load
-  main.cpp        demo
+test/TestMdbVector/     Demo 可执行文件源码（TestMdbVector.cpp，四类演示）
+bench/                  与 hnswlib 的对比基准（需 vcpkg，默认开启，可 MDBVEC_ENABLE_BENCH=OFF 关闭）
+bin/  lib/              构建产物（按 $<CONFIG> 分目录：Release/Debug）
 ```
 
 ## 快速上手
 
 ```cpp
-#include "mdbvec/VectorDb.h"
+#include "MdbVector/VectorDb.h"
 
 mdbvec::VectorDb db(384, mdbvec::Metric::kCosine);
 db.Add({ 0.1f, 0.2f, /* ... */ }, "文档A");

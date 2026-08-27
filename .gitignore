@@ -1,5 +1,7 @@
 build/
 cmake-build-*/
+bin/
+lib/
 *.mdbv
 out.txt
 /.vs

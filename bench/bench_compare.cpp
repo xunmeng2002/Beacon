@@ -1,7 +1,7 @@
 // MdbVector（自研 HNSW）与 hnswlib 基准对比：同一数据/查询下比 build_ms / recall@k / ms-query
 // 构建需 vcpkg toolchain（MDBVEC_ENABLE_BENCH=ON），见 CMakeLists 与 README。
-#include "mdbvec/Metrics.h"
-#include "mdbvec/VectorDb.h"
+#include "MdbVector/Metrics.h"
+#include "MdbVector/VectorDb.h"
 
 #include "hnswlib/hnswlib.h"
 
