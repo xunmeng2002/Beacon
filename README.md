@@ -95,7 +95,7 @@ db.Add({ 0.1f, 0.2f, /* ... */ }, "文档A");
 db.Update(id, { 0.2f, 0.1f, /* ... */ }, "文档A(修订)");  // 就地更新
 db.Delete(id);                                            // 软删除，id 仍有效
 
-auto hits = db.Search({ 0.15f, 0.21f, /* ... */ }, 5);  // 精确 Top-5
+auto hits = db.SearchExact({ 0.15f, 0.21f, /* ... */ }, 5);  // 精确 Top-5
 
 db.EnableIndex();                                       // 构建 HNSW 索引
 auto near = db.SearchIndexed({ 0.15f, 0.21f, /* ... */ }, 5, 100);  // 近似 Top-5

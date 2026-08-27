@@ -65,7 +65,7 @@ static void DemoSmall()
     VectorDb legacy(3, Metric::kCosine);
     if (legacy.Load(path))
     {
-        const auto old_hits = legacy.Search({ 0.95f, 0.05f, 0 }, 1);
+        const auto old_hits = legacy.SearchExact({ 0.95f, 0.05f, 0 }, 1);
         std::cout << "  旧文件加载成功 count=" << legacy.count()
             << " top-1 meta=" << legacy.metadata(old_hits[0].id) << "\n";
     }
@@ -76,7 +76,7 @@ static void DemoSmall()
     db.Add({ 0, 0, 1 }, "z 轴");
     db.Add({ 0.9f, 0.1f, 0 }, "接近 x 轴");
 
-    const auto hits = db.Search({ 0.95f, 0.05f, 0 }, 2);
+    const auto hits = db.SearchExact({ 0.95f, 0.05f, 0 }, 2);
     for (const auto& h : hits)
     {
         std::cout << "  top id=" << h.id << " score=" << h.score
@@ -85,7 +85,7 @@ static void DemoSmall()
 
     std::cout << "  --- 删除 id=3（接近 x 轴）---\n";
     db.Delete(3);
-    const auto hits2 = db.Search({ 0.95f, 0.05f, 0 }, 2);
+    const auto hits2 = db.SearchExact({ 0.95f, 0.05f, 0 }, 2);
     for (const auto& h : hits2)
     {
         std::cout << "  top id=" << h.id << " meta=" << db.metadata(h.id) << "\n";
@@ -93,7 +93,7 @@ static void DemoSmall()
 
     std::cout << "  --- 更新 id=2（z 轴）为接近 x 轴 ---\n";
     db.Update(2, { 0.9f, 0.1f, 0 }, "改造为接近 x 轴");
-    const auto hits3 = db.Search({ 0.95f, 0.05f, 0 }, 2);
+    const auto hits3 = db.SearchExact({ 0.95f, 0.05f, 0 }, 2);
     for (const auto& h : hits3)
     {
         std::cout << "  top id=" << h.id << " meta=" << db.metadata(h.id) << "\n";
@@ -116,7 +116,7 @@ static void DemoSmall()
         std::cerr << "  加载失败\n";
         return;
     }
-    const auto hits4 = loaded.Search({ 0.95f, 0.05f, 0 }, 2);
+    const auto hits4 = loaded.SearchExact({ 0.95f, 0.05f, 0 }, 2);
     std::cout << "  重载后 count=" << loaded.count()
         << " deleted(3)=" << loaded.deleted(3) << "\n";
     for (const auto& h : hits4)
@@ -154,7 +154,7 @@ static void DemoLarge()
     }
     Stopwatch sw;
     sw.Start();
-    const auto hits = db.Search(vec, 5);
+    const auto hits = db.SearchExact(vec, 5);
     const double ms = sw.elapsed_ms();
 
     std::cout << "  数据量=" << db.count() << " 维度=" << dim
@@ -203,7 +203,7 @@ static void DemoIndex()
         {
             x = dist(qrng);
         }
-        const auto exact = db.Search(vec, k);
+        const auto exact = db.SearchExact(vec, k);
         const auto approx = db.SearchIndexed(vec, k, ef);
         std::size_t hit = 0;
         for (const auto& a : approx)
@@ -229,7 +229,7 @@ static void DemoIndex()
         {
             x = dist(qrng);
         }
-        db.Search(vec, k);
+        db.SearchExact(vec, k);
     }
     const double brute_ms = sw.elapsed_ms() / queries;
 
@@ -269,7 +269,7 @@ static void DemoIndex()
         {
             x = dist(drng);
         }
-        const auto exact = db.Search(vec, k);
+        const auto exact = db.SearchExact(vec, k);
         const auto approx = db.SearchIndexed(vec, k, ef);
         std::size_t hit = 0;
         for (const auto& a : approx)

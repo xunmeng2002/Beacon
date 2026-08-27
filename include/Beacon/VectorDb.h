@@ -23,7 +23,8 @@ public:
     std::size_t Add(const std::vector<float>& vec, const std::string& meta = {});
     bool Update(std::size_t id, const std::vector<float>& vec, const std::string& meta = {});
     bool Delete(std::size_t id);
-    std::vector<Hit> Search(const std::vector<float>& query, std::size_t k) const;
+    // 精确 Top-K：全扫描打分，结果保证正确，不依赖索引
+    std::vector<Hit> SearchExact(const std::vector<float>& query, std::size_t k) const;
 
     // 按预期最大条数预分配向量表存储，批量导入前调用避免重复扩容
     void Reserve(std::size_t slot_count);

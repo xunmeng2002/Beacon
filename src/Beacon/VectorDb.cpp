@@ -255,7 +255,7 @@ bool VectorDb::Delete(std::size_t id)
     return ok;
 }
 
-std::vector<Hit> VectorDb::Search(const std::vector<float>& query, std::size_t k) const
+std::vector<Hit> VectorDb::SearchExact(const std::vector<float>& query, std::size_t k) const
 {
     std::shared_lock<std::shared_mutex> lock(rw_mutex_);
     std::vector<Hit> result;

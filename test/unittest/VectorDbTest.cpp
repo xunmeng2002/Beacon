@@ -67,7 +67,7 @@ TEST_F(VectorDbTest, CrudSoftDeleteAndReviveKeepIdStable)
 
 TEST_F(VectorDbTest, SearchFindsAxisVectorExactly)
 {
-    const auto hits = db_.Search({ 1, 0, 0 }, 3);
+    const auto hits = db_.SearchExact({ 1, 0, 0 }, 3);
     ASSERT_EQ(hits.size(), 3u);
     EXPECT_EQ(hits[0].id, x_id_);
     EXPECT_FLOAT_EQ(hits[0].score, 1.0f);
@@ -75,17 +75,17 @@ TEST_F(VectorDbTest, SearchFindsAxisVectorExactly)
 
 TEST_F(VectorDbTest, SearchKGreaterThanLiveCountReturnsAll)
 {
-    const auto hits = db_.Search({ 1, 0, 0 }, 100);
+    const auto hits = db_.SearchExact({ 1, 0, 0 }, 100);
     EXPECT_EQ(hits.size(), db_.count());
 }
 
 TEST_F(VectorDbTest, SearchEmptyOrDimMismatchIsSafe)
 {
     VectorDb empty(3, Metric::kCosine);
-    EXPECT_TRUE(empty.Search({ 1, 0, 0 }, 5).empty());
-    EXPECT_TRUE(empty.Search({ 1, 0, 0 }, 0).empty());
+    EXPECT_TRUE(empty.SearchExact({ 1, 0, 0 }, 5).empty());
+    EXPECT_TRUE(empty.SearchExact({ 1, 0, 0 }, 0).empty());
 
-    EXPECT_TRUE(db_.Search({ 1, 0 }, 5).empty());          // 维度不匹配
+    EXPECT_TRUE(db_.SearchExact({ 1, 0 }, 5).empty());          // 维度不匹配
     EXPECT_EQ(db_.Add({ 1, 0 }, "bad"), static_cast<std::size_t>(-1));
     EXPECT_EQ(db_.Update(near_x_id_, { 1, 0 }, "bad"), false);
 }
@@ -117,7 +117,7 @@ TEST_F(VectorDbTest, SaveLoadRoundTripPreservesDataAndIndex)
 
     // 含索引保存 → 重载后索引从磁盘恢复，首查结果与暴力检索一致
     EXPECT_TRUE(loaded.IndexEnabled());
-    const auto exact = db_.Search({ 1, 0, 0 }, 1);
+    const auto exact = db_.SearchExact({ 1, 0, 0 }, 1);
     const auto approx = loaded.SearchIndexed({ 1, 0, 0 }, 1, 32);
     ASSERT_FALSE(approx.empty());
     EXPECT_EQ(approx[0].id, exact[0].id);
@@ -211,7 +211,7 @@ TEST(VectorDbRegression, DirtySaveOmitsIndexSegmentThenLazyRebuild)
     VectorDb reloaded(3, Metric::kCosine);
     reloaded.EnableIndex();
     ASSERT_TRUE(reloaded.Load(path_dirty));
-    const auto exact = reloaded.Search({ 1, 0, 0 }, 1);
+    const auto exact = reloaded.SearchExact({ 1, 0, 0 }, 1);
     const auto approx = reloaded.SearchIndexed({ 1, 0, 0 }, 1, 32);
     ASSERT_FALSE(approx.empty());
     EXPECT_EQ(approx[0].id, exact[0].id);
@@ -249,7 +249,7 @@ TEST(VectorDbRegression, CorruptedIndexSegmentDegradesToLazyRebuild)
     VectorDb reloaded(3, Metric::kCosine);
     ASSERT_TRUE(reloaded.Load(path));          // 向量段权威 → Load 仍成功
     EXPECT_EQ(reloaded.count(), 4u);
-    const auto exact = reloaded.Search({ 1, 0, 0 }, 1);
+    const auto exact = reloaded.SearchExact({ 1, 0, 0 }, 1);
     const auto approx = reloaded.SearchIndexed({ 1, 0, 0 }, 1, 32);   // 校验失败 → 懒重建
     ASSERT_FALSE(approx.empty());
     EXPECT_EQ(approx[0].id, exact[0].id);
@@ -288,7 +288,7 @@ TEST(VectorDbIndexedSearch, RecallAgainstBruteForceExceedsThreshold)
         {
             x = dist(qrng);
         }
-        const auto exact = db.Search(vec, k);
+        const auto exact = db.SearchExact(vec, k);
         const auto approx = db.SearchIndexed(vec, k, 100);
         for (const Hit& a : approx)
         {
