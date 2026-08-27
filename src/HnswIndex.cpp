@@ -53,22 +53,22 @@ std::size_t HnswIndex::BufferLength(int level) const
     return 2 * m_ + 1 + static_cast<std::size_t>(level) * (m_ + 1);
 }
 
-std::uint32_t* HnswIndex::LayerCountPtr(std::size_t node, int layer)
+HnswIndex::NeighborId* HnswIndex::LayerCountPtr(std::size_t node, int layer)
 {
     return links_[node].data() + LayerOffset(layer);
 }
 
-const std::uint32_t* HnswIndex::LayerCountPtr(std::size_t node, int layer) const
+const HnswIndex::NeighborId* HnswIndex::LayerCountPtr(std::size_t node, int layer) const
 {
     return links_[node].data() + LayerOffset(layer);
 }
 
-std::uint32_t* HnswIndex::LayerSlots(std::size_t node, int layer)
+HnswIndex::NeighborId* HnswIndex::LayerSlots(std::size_t node, int layer)
 {
     return LayerCountPtr(node, layer) + 1;
 }
 
-const std::uint32_t* HnswIndex::LayerSlots(std::size_t node, int layer) const
+const HnswIndex::NeighborId* HnswIndex::LayerSlots(std::size_t node, int layer) const
 {
     return LayerCountPtr(node, layer) + 1;
 }
@@ -78,16 +78,16 @@ std::size_t HnswIndex::LayerCount(std::size_t node, int layer) const
     return *LayerCountPtr(node, layer);
 }
 
-void HnswIndex::AddLink(int layer, std::size_t node, std::size_t neighbor)
+void HnswIndex::AddLink(int layer, std::size_t node, NeighborId neighbor)
 {
     if (node >= node_level_.size() || layer < 0 || node_level_[node] < 0 ||
         static_cast<std::size_t>(layer) > static_cast<std::size_t>(node_level_[node]))
     {
         return;
     }
-    const std::uint32_t nbr = static_cast<std::uint32_t>(neighbor);
-    std::uint32_t* const count = LayerCountPtr(node, layer);
-    std::uint32_t* const slots = LayerSlots(node, layer);
+    const NeighborId nbr = neighbor;
+    NeighborId* const count = LayerCountPtr(node, layer);
+    NeighborId* const slots = LayerSlots(node, layer);
     for (std::size_t j = 0; j < *count; ++j)
     {
         if (slots[j] == nbr)
@@ -166,7 +166,7 @@ std::vector<HnswIndex::Candidate> HnswIndex::SearchLayer(
             break;
         }
         const std::size_t layer_count = LayerCount(cur.id, layer);
-        const std::uint32_t* const layer_slots = LayerSlots(cur.id, layer);
+        const NeighborId* const layer_slots = LayerSlots(cur.id, layer);
         for (std::size_t j = 0; j < layer_count; ++j)
         {
 #if defined(__AVX2__)
@@ -259,14 +259,14 @@ std::vector<std::size_t> HnswIndex::SelectNeighbors(
     return result;
 }
 
-void HnswIndex::EraseFromLayer(std::size_t node, int layer, std::uint32_t neighbor)
+void HnswIndex::EraseFromLayer(std::size_t node, int layer, NeighborId neighbor)
 {
     if (node >= node_level_.size() || node_level_[node] < 0)
     {
         return;
     }
-    std::uint32_t* const count = LayerCountPtr(node, layer);
-    std::uint32_t* const slots = LayerSlots(node, layer);
+    NeighborId* const count = LayerCountPtr(node, layer);
+    NeighborId* const slots = LayerSlots(node, layer);
     for (std::size_t j = 0; j < *count; ++j)
     {
         if (slots[j] == neighbor)
@@ -344,7 +344,7 @@ void HnswIndex::Remove(std::size_t id)
     for (int layer = 0; layer <= node_level; ++layer)
     {
         const std::size_t layer_count = LayerCount(id, layer);
-        const std::uint32_t* const id_slots = LayerSlots(id, layer);
+        const NeighborId* const id_slots = LayerSlots(id, layer);
         std::vector<std::size_t> neighbors;
         neighbors.reserve(layer_count);
         for (std::size_t j = 0; j < layer_count; ++j)
@@ -354,7 +354,7 @@ void HnswIndex::Remove(std::size_t id)
             {
                 continue;
             }
-            EraseFromLayer(nbr, layer, static_cast<std::uint32_t>(id));
+            EraseFromLayer(nbr, layer, static_cast<NeighborId>(id));
             neighbors.push_back(nbr);
         }
         // 被删节点的邻居两两重连（双向）：每节点在"旧邻接 ∪ 其它邻居"中保留最近 capacity 个，
@@ -365,7 +365,7 @@ void HnswIndex::Remove(std::size_t id)
             std::vector<std::size_t> desired;
             desired.reserve(layer_count + neighbors.size());
             const std::size_t cur_count = LayerCount(neighbors[i], layer);
-            const std::uint32_t* const cur_slots = LayerSlots(neighbors[i], layer);
+            const NeighborId* const cur_slots = LayerSlots(neighbors[i], layer);
             for (std::size_t k = 0; k < cur_count; ++k)
             {
                 desired.push_back(cur_slots[k]);
@@ -389,12 +389,12 @@ void HnswIndex::Remove(std::size_t id)
                                   });
                 desired.resize(capacity);
             }
-            std::uint32_t* const count = LayerCountPtr(neighbors[i], layer);
-            std::uint32_t* const slots = LayerSlots(neighbors[i], layer);
-            *count = static_cast<std::uint32_t>(desired.size());
+            NeighborId* const count = LayerCountPtr(neighbors[i], layer);
+            NeighborId* const slots = LayerSlots(neighbors[i], layer);
+            *count = static_cast<NeighborId>(desired.size());
             for (std::size_t k = 0; k < desired.size(); ++k)
             {
-                slots[k] = static_cast<std::uint32_t>(desired[k]);
+                slots[k] = static_cast<NeighborId>(desired[k]);
             }
         }
     }
@@ -445,7 +445,7 @@ bool HnswIndex::Write(std::ostream& out) const
              layer < static_cast<std::size_t>(node_level_[id] + 1); ++layer)
         {
             const std::size_t count = LayerCount(id, static_cast<int>(layer));
-            const std::uint32_t* const slots = LayerSlots(id, static_cast<int>(layer));
+            const NeighborId* const slots = LayerSlots(id, static_cast<int>(layer));
             write_u64(static_cast<std::uint64_t>(count));
             for (std::size_t j = 0; j < count; ++j)
             {
@@ -516,12 +516,12 @@ bool HnswIndex::Read(std::istream& in)
             {
                 return false;
             }
-            std::uint32_t* const count = LayerCountPtr(id, static_cast<int>(layer));
-            std::uint32_t* const slots = LayerSlots(id, static_cast<int>(layer));
-            *count = static_cast<std::uint32_t>(neighbor_count);
+            NeighborId* const count = LayerCountPtr(id, static_cast<int>(layer));
+            NeighborId* const slots = LayerSlots(id, static_cast<int>(layer));
+            *count = static_cast<NeighborId>(neighbor_count);
             for (std::uint64_t i = 0; i < neighbor_count; ++i)
             {
-                std::uint32_t nbr = 0;
+                NeighborId nbr = 0;
                 if (!read_u32(nbr) || static_cast<std::size_t>(nbr) >= node_level_.size())
                 {
                     return false;   // 引用越界 → 判为无效

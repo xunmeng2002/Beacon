@@ -37,6 +37,7 @@ public:
     void Clear();
 
 private:
+    using NeighborId = std::uint32_t;   // 链接表内存储的紧凑 id（4 字节，比 size_t 省一半）
     struct Candidate
     {
         std::size_t id;
@@ -44,8 +45,8 @@ private:
     };
 
     int RandomLevel();
-    void AddLink(int layer, std::size_t node, std::size_t neighbor);
-    void EraseFromLayer(std::size_t node, int layer, std::uint32_t neighbor);
+    void AddLink(int layer, std::size_t node, NeighborId neighbor);
+    void EraseFromLayer(std::size_t node, int layer, NeighborId neighbor);
     std::vector<Candidate> SearchLayer(const float* query, std::size_t entry_id, std::size_t ef, int layer) const;
     std::vector<std::size_t> SelectNeighbors(const std::vector<Candidate>& candidates, std::size_t limit) const;
 
@@ -53,10 +54,10 @@ private:
     std::size_t LayerOffset(int layer) const;
     std::size_t LayerCapacity(int layer) const;
     std::size_t BufferLength(int level) const;
-    std::uint32_t* LayerCountPtr(std::size_t node, int layer);
-    const std::uint32_t* LayerCountPtr(std::size_t node, int layer) const;
-    std::uint32_t* LayerSlots(std::size_t node, int layer);
-    const std::uint32_t* LayerSlots(std::size_t node, int layer) const;
+    NeighborId* LayerCountPtr(std::size_t node, int layer);
+    const NeighborId* LayerCountPtr(std::size_t node, int layer) const;
+    NeighborId* LayerSlots(std::size_t node, int layer);
+    const NeighborId* LayerSlots(std::size_t node, int layer) const;
     std::size_t LayerCount(std::size_t node, int layer) const;
 
     const VectorTable* table_;
@@ -67,7 +68,7 @@ private:
     double level_mult_;                     // 1 / ln(m)
 
     std::vector<int> node_level_;           // 按 slot id，-1 = 未入图
-    std::vector<std::vector<std::uint32_t>> links_;   // [slot][扁平层缓冲：层 0 容量 2M、上层 M，count 内联于层首]
+    std::vector<std::vector<NeighborId>> links_;   // [slot][扁平层缓冲：层 0 容量 2M、上层 M，count 内联于层首]
 
     int enter_point_ = -1;
     int top_level_ = 0;
