@@ -75,9 +75,6 @@ private:
 
     mutable std::mt19937 rng_;
     mutable std::uniform_real_distribution<double> level_rand_;
-
-    mutable std::vector<std::uint32_t> visited_tags_;    // 复用 visited buffer（SearchLayer 共享）
-    mutable std::uint32_t visited_generation_ = 0;       // 每次 SearchLayer 自增的 epoch 标记
 };
 
 }  // namespace mdbvec

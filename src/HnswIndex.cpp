@@ -139,13 +139,16 @@ std::vector<HnswIndex::Candidate> HnswIndex::SearchLayer(
         return a.score > b.score;
     };
 
-    // 已访问标记：复用 buffer + 自增 generation，免去每次调用清零 O(slot_count)
-    if (visited_tags_.size() < table_->slot_count())
+    // 已访问标记：函数级 thread_local buffer + 自增 generation，免每次清零 O(slot_count)，
+    // 且线程隔离 → 并发 Search 可共享读锁；跨实例共享安全（buffer 只增不减、标签按线程唯一）
+    static thread_local std::vector<std::uint32_t> visited_tags;
+    static thread_local std::uint32_t visited_generation = 0;
+    if (visited_tags.size() < table_->slot_count())
     {
-        visited_tags_.assign(table_->slot_count(), 0);
+        visited_tags.assign(table_->slot_count(), 0);
     }
-    const std::uint32_t tag = ++visited_generation_;
-    std::vector<std::uint32_t>& visited = visited_tags_;
+    const std::uint32_t tag = ++visited_generation;
+    std::vector<std::uint32_t>& visited = visited_tags;
     visited[entry_id] = tag;
 
     // 堆内携带已算好的 score：只在发现节点时算一次，避免每次堆比较重算点积
@@ -564,7 +567,6 @@ void HnswIndex::Clear()
 {
     node_level_.clear();
     links_.clear();
-    visited_tags_.clear();
     enter_point_ = -1;
     top_level_ = 0;
 }

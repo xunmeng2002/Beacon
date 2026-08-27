@@ -1,10 +1,12 @@
 #include "mdbvec/VectorDb.h"
 
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <iostream>
 #include <random>
 #include <string>
+#include <thread>
 #include <vector>
 
 class Stopwatch
@@ -28,6 +30,7 @@ private:
 static void DemoSmall();
 static void DemoLarge();
 static void DemoIndex();
+static void DemoConcurrent();
 
 int main()
 {
@@ -46,6 +49,7 @@ int main()
     DemoSmall();
     DemoLarge();
     DemoIndex();
+    DemoConcurrent();
     return 0;
 }
 
@@ -298,5 +302,116 @@ static void DemoIndex()
     {
         std::cout << "  含索引重载后首查=" << first_ms << " ms (免重建) top1="
                   << reload_hits[0].id << "\n";
+    }
+}
+
+// 并发读写压力：4 读者并发 SearchIndexed + 2 写者 Add/Update/Delete。
+// 断言最终 count == 初始 + 写者数×每写者Add − 写者数×每写者Delete；
+// 锁保证每操作原子，故结果与线程交错顺序无关，可确定性校验。
+static void DemoConcurrent()
+{
+    using namespace mdbvec;
+    std::cout << "==== 演示 4：并发读写（shared_mutex + thread_local visited）====\n";
+
+    const std::size_t dim = 64;
+    const std::size_t initial = 10000;
+    std::mt19937 rng(2024);
+    std::normal_distribution<float> dist(0.0f, 1.0f);
+
+    VectorDb db(dim, Metric::kCosine);
+    db.Reserve(initial + 10000);
+    std::vector<float> vec(dim);
+    for (std::size_t i = 0; i < initial; ++i)
+    {
+        for (float& x : vec)
+        {
+            x = dist(rng);
+        }
+        db.Add(vec, "seed-" + std::to_string(i));
+    }
+    db.EnableIndex();
+
+    const std::size_t num_readers = 4;
+    const std::size_t num_writers = 2;
+    const std::size_t adds_per_writer = 1000;
+    const std::size_t deletes_per_writer = 500;
+    const std::size_t expected =
+        initial + num_writers * adds_per_writer - num_writers * deletes_per_writer;
+
+    std::atomic<bool> stop{ false };
+    std::vector<std::thread> threads;
+
+    for (std::size_t r = 0; r < num_readers; ++r)
+    {
+        threads.emplace_back([&db, &stop, dim, seed = r]()
+        {
+            std::mt19937 qrng(1000 + seed);
+            std::normal_distribution<float> qdist(0.0f, 1.0f);
+            std::vector<float> q(dim);
+            std::size_t queries = 0;
+            while (!stop.load(std::memory_order_relaxed))
+            {
+                for (float& x : q)
+                {
+                    x = qdist(qrng);
+                }
+                const std::vector<Hit> hits = db.SearchIndexed(q, 10, 64);
+                if (!hits.empty())
+                {
+                    db.metadata(hits[0].id);   // 按值返回，并发安全
+                }
+                ++queries;
+            }
+            std::cout << "  reader#" << seed << " 完成 " << queries << " 次检索\n";
+        });
+    }
+
+    for (std::size_t w = 0; w < num_writers; ++w)
+    {
+        threads.emplace_back([&db, dim, seed = w, adds_per_writer, deletes_per_writer]()
+        {
+            std::mt19937 wrng(2000 + seed);
+            std::normal_distribution<float> wdist(0.0f, 1.0f);
+            std::vector<float> v(dim);
+            for (std::size_t i = 0; i < adds_per_writer; ++i)
+            {
+                for (float& x : v)
+                {
+                    x = wdist(wrng);
+                }
+                const std::size_t id = db.Add(v, "w" + std::to_string(seed) + "-" + std::to_string(i));
+                if (i % 5 == 0)
+                {
+                    for (float& x : v)
+                    {
+                        x = wdist(wrng);
+                    }
+                    db.Update(id, v, "upd");   // 覆盖本写者刚插入的活槽，count 不变
+                }
+            }
+            for (std::size_t i = 0; i < deletes_per_writer; ++i)
+            {
+                db.Delete(seed * deletes_per_writer + i);   // 固定初值区段、各写者不相交、必成功
+            }
+        });
+    }
+
+    // 先 join 写者（界定总耗时），再通知读者停止并 join
+    for (std::size_t w = 0; w < num_writers; ++w)
+    {
+        threads[w + num_readers].join();
+    }
+    stop.store(true, std::memory_order_relaxed);
+    for (std::size_t r = 0; r < num_readers; ++r)
+    {
+        threads[r].join();
+    }
+
+    const std::size_t actual = db.count();
+    std::cout << "  最终 count=" << actual << " 期望=" << expected
+              << "  " << (actual == expected ? "OK" : "FAIL") << "\n";
+    if (actual != expected)
+    {
+        std::cerr << "  并发一致性断言失败！\n";
     }
 }

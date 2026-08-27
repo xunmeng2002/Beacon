@@ -218,11 +218,13 @@ VectorDb::VectorDb(std::size_t dim, Metric metric) : table_(dim, metric)
 
 void VectorDb::Reserve(std::size_t slot_count)
 {
+    std::unique_lock<std::shared_mutex> lock(rw_mutex_);
     table_.Reserve(slot_count);
 }
 
 std::size_t VectorDb::Add(const std::vector<float>& vec, const std::string& meta)
 {
+    std::unique_lock<std::shared_mutex> lock(rw_mutex_);
     const std::size_t id = table_.Add(vec, meta);
     if (id != static_cast<std::size_t>(-1) && index_ && !index_dirty_)
     {
@@ -233,6 +235,7 @@ std::size_t VectorDb::Add(const std::vector<float>& vec, const std::string& meta
 
 bool VectorDb::Update(std::size_t id, const std::vector<float>& vec, const std::string& meta)
 {
+    std::unique_lock<std::shared_mutex> lock(rw_mutex_);
     const bool ok = table_.Update(id, vec, meta);
     if (ok && index_)
     {
@@ -243,6 +246,7 @@ bool VectorDb::Update(std::size_t id, const std::vector<float>& vec, const std::
 
 bool VectorDb::Delete(std::size_t id)
 {
+    std::unique_lock<std::shared_mutex> lock(rw_mutex_);
     const bool ok = table_.Delete(id);
     if (ok && index_)
     {
@@ -253,6 +257,7 @@ bool VectorDb::Delete(std::size_t id)
 
 std::vector<Hit> VectorDb::Search(const std::vector<float>& query, std::size_t k) const
 {
+    std::shared_lock<std::shared_mutex> lock(rw_mutex_);
     std::vector<Hit> result;
     const std::size_t n = table_.count();
     if (n == 0 || k == 0 || query.size() != table_.dim())
@@ -271,6 +276,7 @@ std::vector<Hit> VectorDb::Search(const std::vector<float>& query, std::size_t k
 
 void VectorDb::EnableIndex(std::size_t m, std::size_t ef_construction)
 {
+    std::unique_lock<std::shared_mutex> lock(rw_mutex_);
     index_ = std::make_unique<HnswIndex>(&table_, m, ef_construction);
     index_->Rebuild();
     index_dirty_ = false;
@@ -278,20 +284,36 @@ void VectorDb::EnableIndex(std::size_t m, std::size_t ef_construction)
 
 void VectorDb::DisableIndex()
 {
+    std::unique_lock<std::shared_mutex> lock(rw_mutex_);
     index_ = nullptr;
     index_dirty_ = false;
 }
 
 bool VectorDb::IndexEnabled() const
 {
+    std::shared_lock<std::shared_mutex> lock(rw_mutex_);
     return index_ != nullptr;
 }
 
 std::vector<Hit> VectorDb::SearchIndexed(const std::vector<float>& query, std::size_t k, std::size_t ef) const
 {
+    // 快路径：索引干净 → 共享锁，读读并行；脏/无索引再落独占锁重建
+    // 注意：shared_mutex 无写者优先，持续读负载可能饿写者（学习项目可接受）
+    {
+        std::shared_lock<std::shared_mutex> lock(rw_mutex_);
+        if (!index_)
+        {
+            return {};
+        }
+        if (!index_dirty_)
+        {
+            return index_->Search(query, k, ef);
+        }
+    }
+    std::unique_lock<std::shared_mutex> lock(rw_mutex_);
     if (!index_)
     {
-        return {};
+        return {};   // 防共享锁释放后 DisableIndex 竞态，独占锁下重查
     }
     if (index_dirty_)
     {
@@ -303,26 +325,31 @@ std::vector<Hit> VectorDb::SearchIndexed(const std::vector<float>& query, std::s
 
 std::size_t VectorDb::count() const
 {
+    std::shared_lock<std::shared_mutex> lock(rw_mutex_);
     return table_.count();
 }
 
 std::size_t VectorDb::dim() const
 {
+    std::shared_lock<std::shared_mutex> lock(rw_mutex_);
     return table_.dim();
 }
 
 bool VectorDb::deleted(std::size_t id) const
 {
+    std::shared_lock<std::shared_mutex> lock(rw_mutex_);
     return table_.deleted(id);
 }
 
-const std::string& VectorDb::metadata(std::size_t id) const
+std::string VectorDb::metadata(std::size_t id) const
 {
-    return table_.metadata(id);
+    std::shared_lock<std::shared_mutex> lock(rw_mutex_);
+    return table_.metadata(id);   // 按值返回：引用会逃逸锁，并发 Add/Update 下悬垂
 }
 
 void VectorDb::Clear()
 {
+    std::unique_lock<std::shared_mutex> lock(rw_mutex_);
     table_ = VectorTable();
     index_ = nullptr;
     index_dirty_ = false;
@@ -330,6 +357,8 @@ void VectorDb::Clear()
 
 bool VectorDb::Save(const std::string& path) const
 {
+    // 独占锁：串行化并发 Save 到同一路径（文件级竞态），并保证迭代 DB 状态期间无写者
+    std::unique_lock<std::shared_mutex> lock(rw_mutex_);
     std::ofstream out(path, std::ios::binary);
     if (!out)
     {
@@ -368,6 +397,7 @@ bool VectorDb::Save(const std::string& path) const
 
 bool VectorDb::Load(const std::string& path)
 {
+    std::unique_lock<std::shared_mutex> lock(rw_mutex_);
     std::ifstream in(path, std::ios::binary);
     if (!in)
     {

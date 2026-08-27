@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <shared_mutex>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,8 @@ class VectorDb
 public:
     VectorDb() = default;
     VectorDb(std::size_t dim, Metric metric);
+    VectorDb(const VectorDb&) = delete;             // 门面含读写锁，不可拷贝/移动
+    VectorDb& operator=(const VectorDb&) = delete;
 
     std::size_t Add(const std::vector<float>& vec, const std::string& meta = {});
     bool Update(std::size_t id, const std::vector<float>& vec, const std::string& meta = {});
@@ -34,7 +37,7 @@ public:
     std::size_t count() const;
     std::size_t dim() const;
     bool deleted(std::size_t id) const;
-    const std::string& metadata(std::size_t id) const;
+    std::string metadata(std::size_t id) const;   // 按值：const& 会逃逸锁，并发 Add/Update 下悬垂
 
     bool Save(const std::string& path) const;
     bool Load(const std::string& path);
@@ -44,6 +47,7 @@ private:
     VectorTable table_;
     std::unique_ptr<HnswIndex> index_;
     mutable bool index_dirty_ = false;
+    mutable std::shared_mutex rw_mutex_;   // 门面读写锁：所有公有方法均须持有，读共享/写独占
 };
 
 }  // namespace mdbvec
