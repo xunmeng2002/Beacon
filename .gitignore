@@ -2,7 +2,7 @@ build/
 cmake-build-*/
 bin/
 lib/
-*.mdbv
+*.beacon
 out.txt
 /.vs
 /.vscode/

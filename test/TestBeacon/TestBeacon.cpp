@@ -59,7 +59,7 @@ static void DemoSmall()
     using namespace beacon;
     std::cout << "==== 演示 1：3 维余弦检索 + CRUD ====\n";
 
-    const std::string path = "demo_small.mdbv";
+    const std::string path = "demo_small.beacon";
 
     // 向后兼容：加载已有旧文件（首跑为 v1 格式，验证 v1 -> v2 升级）
     VectorDb legacy(3, Metric::kCosine);
@@ -287,7 +287,7 @@ static void DemoIndex()
     }
 
     // 含索引持久化并重载：首查若免重建（~0.2ms）即证明索引已从磁盘恢复
-    const std::string ipath = "demo_index.mdbv";
+    const std::string ipath = "demo_index.beacon";
     db.Save(ipath);
     VectorDb reloaded(dim, Metric::kCosine);
     reloaded.Load(ipath);

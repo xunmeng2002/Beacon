@@ -12,7 +12,7 @@ namespace beacon {
 
 namespace
 {
-constexpr char kMagic[4] = { 'M', 'D', 'B', 'V' };
+constexpr char kMagic[4] = { 'B', 'E', 'A', 'C' };
 // v1 全存活；v2 起含 tombstone 段；v3 起含 HNSW 索引段（可缺失，缺失即懒重建）
 constexpr std::uint32_t kFormatVersion = 3;
 

@@ -9,7 +9,7 @@
   - 余弦模式在**插入时** L2 归一化，检索时只需一次点积，避免每次查询重复算范数
 - **SIMD 加速**：`x86_64` 上点积走 **AVX2**（8 路 float 并行），其余平台自动标量回退
 - **暴力 Top-K**：小规模数据直接全扫描 + 最小堆维护 K 个最优，结果按分数降序返回
-- **二进制持久化**：`magic("MDBV") + version + dim + metric + count + 数据 + 元数据`，加载时校验魔数与版本
+- **二进制持久化**：`magic("BEAC") + version + dim + metric + count + 数据 + 元数据`，加载时校验魔数与版本
 - **元数据**：每个向量可携带任意字符串（文档 id、原文片段等）
 - **CRUD**：软删除（tombstone，数据不动、id 稳定）+ 就地更新（对已删除 id 执行则复活）
 - **并发支持**：`VectorDb` 门面 `shared_mutex` 读写锁——读读并行、读写/写写互斥；检索 visited 池为线程局部，多线程查询共享读锁安全
@@ -100,8 +100,8 @@ auto hits = db.Search({ 0.15f, 0.21f, /* ... */ }, 5);  // 精确 Top-5
 db.EnableIndex();                                       // 构建 HNSW 索引
 auto near = db.SearchIndexed({ 0.15f, 0.21f, /* ... */ }, 5, 100);  // 近似 Top-5
 
-db.Save("index.mdbv");                                  // 持久化
-db.Load("index.mdbv");                                  // 恢复
+db.Save("index.beacon");                                  // 持久化
+db.Load("index.beacon");                                  // 恢复
 ```
 
 ## 路线图

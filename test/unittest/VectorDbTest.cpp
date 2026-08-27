@@ -16,7 +16,7 @@ using namespace beacon;
 
 namespace
 {
-constexpr char kTestPath[] = "ut_db.mdbv";
+constexpr char kTestPath[] = "ut_db.beacon";
 
 class VectorDbTest : public ::testing::Test
 {
@@ -140,8 +140,8 @@ TEST_F(VectorDbTest, SaveLoadRoundTripPreservesTombstones)
 // 历史回归①：载入不同维度文件时，旧索引（维度不匹配）必须被丢弃重建
 TEST(VectorDbRegression, LoadWithDimChangeDropsStaleIndex)
 {
-    const char* path = "ut_fourdim.mdbv";
-    const char* path_no = "ut_fourdim_noindex.mdbv";
+    const char* path = "ut_fourdim.beacon";
+    const char* path_no = "ut_fourdim_noindex.beacon";
     {
         // 4 维文件（含索引段）
         VectorDb small(4, Metric::kCosine);
@@ -183,8 +183,8 @@ TEST(VectorDbRegression, LoadWithDimChangeDropsStaleIndex)
 // 历史回归②：索引脏时 Save 不写索引段；Load 后首次 SearchIndexed 懒重建且结果正确
 TEST(VectorDbRegression, DirtySaveOmitsIndexSegmentThenLazyRebuild)
 {
-    const char* path_no = "ut_noindex.mdbv";
-    const char* path_dirty = "ut_dirty.mdbv";
+    const char* path_no = "ut_noindex.beacon";
+    const char* path_dirty = "ut_dirty.beacon";
     {
         VectorDb seed(3, Metric::kCosine);
         seed.Add({ 1, 0, 0 }, "x");
@@ -223,7 +223,7 @@ TEST(VectorDbRegression, DirtySaveOmitsIndexSegmentThenLazyRebuild)
 // 历史回归③：篡改索引段字节 → Load 仍成功（向量段权威），SearchIndexed 降级懒重建
 TEST(VectorDbRegression, CorruptedIndexSegmentDegradesToLazyRebuild)
 {
-    const char* path = "ut_corrupt.mdbv";
+    const char* path = "ut_corrupt.beacon";
     {
         VectorDb src(3, Metric::kCosine);
         src.Add({ 1, 0, 0 }, "x");
