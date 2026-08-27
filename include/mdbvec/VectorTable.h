@@ -42,6 +42,7 @@ public:
     std::size_t dim() const;
     Metric metric() const;
 
+    // 前置条件：id < slot_count()（门面 VectorDb 已在越界前拦截，内部调用均满足；为免热路径分支不加检查）
     bool deleted(std::size_t id) const;
     const float* vector(std::size_t id) const;
     const std::string& metadata(std::size_t id) const;

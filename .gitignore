@@ -1,5 +1,6 @@
 build/
 cmake-build-*/
 *.mdbv
+out.txt
 /.vs
 /.vscode/

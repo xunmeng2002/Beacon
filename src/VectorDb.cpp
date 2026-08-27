@@ -237,7 +237,7 @@ bool VectorDb::Update(std::size_t id, const std::vector<float>& vec, const std::
 {
     std::unique_lock<std::shared_mutex> lock(rw_mutex_);
     const bool ok = table_.Update(id, vec, meta);
-    if (ok && index_)
+    if (ok && index_ && !index_dirty_)
     {
         index_->Add(id);   // 幂等：在图中则先移除再按新向量重插
     }
@@ -248,7 +248,7 @@ bool VectorDb::Delete(std::size_t id)
 {
     std::unique_lock<std::shared_mutex> lock(rw_mutex_);
     const bool ok = table_.Delete(id);
-    if (ok && index_)
+    if (ok && index_ && !index_dirty_)
     {
         index_->Remove(id);   // 节点级删除，不再触发全量重建
     }
@@ -338,13 +338,14 @@ std::size_t VectorDb::dim() const
 bool VectorDb::deleted(std::size_t id) const
 {
     std::shared_lock<std::shared_mutex> lock(rw_mutex_);
-    return table_.deleted(id);
+    return id < table_.slot_count() && table_.deleted(id);   // 越界 id 视为不存在
 }
 
 std::string VectorDb::metadata(std::size_t id) const
 {
     std::shared_lock<std::shared_mutex> lock(rw_mutex_);
-    return table_.metadata(id);   // 按值返回：引用会逃逸锁，并发 Add/Update 下悬垂
+    // 按值返回：引用会逃逸锁，并发 Add/Update 下悬垂；越界 id 返回空串
+    return id < table_.slot_count() ? table_.metadata(id) : std::string{};
 }
 
 void VectorDb::Clear()
@@ -386,7 +387,7 @@ bool VectorDb::Save(const std::string& path) const
         return false;
     }
     // v3 起：向量段权威，索引段为可校验缓存（缺失/损坏即降级懒重建）
-    const std::uint8_t has_index = index_ ? 1u : 0u;
+    const std::uint8_t has_index = (index_ && !index_dirty_) ? 1u : 0u;
     out.write(reinterpret_cast<const char*>(&has_index), sizeof(has_index));
     if (index_ && !index_->Write(out))
     {
@@ -421,11 +422,20 @@ bool VectorDb::Load(const std::string& path)
         }
     }
 
-    table_.set_data(static_cast<std::size_t>(header.dim), U8ToMetric(header.metric),
-                    std::move(data), std::move(metadata), std::move(deleted));
+    const std::size_t old_dim = table_.dim();
+    const Metric old_metric = table_.metric();
+    table_.set_data(static_cast<std::size_t>(header.dim), U8ToMetric(header.metric), std::move(data), std::move(metadata), std::move(deleted));
     if (index_)
     {
-        index_dirty_ = true;
+        // 维度/度量变更时，旧索引的 dim_/metric_ 是旧表快照，按错维打分 → 丢弃重建
+        if (old_dim != static_cast<std::size_t>(header.dim) || old_metric != U8ToMetric(header.metric))
+        {
+            index_.reset();
+        }
+        else
+        {
+            index_dirty_ = true;
+        }
     }
     if (header.version >= 3)
     {

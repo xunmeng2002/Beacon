@@ -515,7 +515,7 @@ bool HnswIndex::Read(std::istream& in)
         for (std::size_t layer = 0; layer < static_cast<std::size_t>(level + 1); ++layer)
         {
             std::uint64_t neighbor_count = 0;
-            if (!read_u64(neighbor_count) || neighbor_count > 2 * m_)
+            if (!read_u64(neighbor_count) || neighbor_count > LayerCapacity(layer))
             {
                 return false;
             }
