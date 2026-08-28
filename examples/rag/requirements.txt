@@ -1,0 +1,3 @@
+# Beacon RAG 示例依赖：torch 已装（CPU），仅补 sentence-transformers；LLM 调用走标准库 urllib，无需 requests
+# embedding 模型 bge-large-zh-v1.5 建议预下载到本地 models/（国内网络用 curl 从 hf-mirror.com 拉取，见 README）
+sentence-transformers>=3.0

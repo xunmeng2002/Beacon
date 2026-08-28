@@ -12,3 +12,6 @@ __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
+
+# RAG 示例本地模型（手动预下载，不提交）
+examples/rag/models/
