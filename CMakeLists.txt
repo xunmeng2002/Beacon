@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 include(submodules/CMakeCommon/CMakeCommon.cmake)
 restore_vcpkg_root()
+reuse_git_proxy_for_vcpkg()
 set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
 message(STATUS "ENV{VCPKG_ROOT} = $ENV{VCPKG_ROOT}")
 message(STATUS "ENV{VCPKG_DOWNLOADS} = $ENV{VCPKG_DOWNLOADS}")
@@ -83,8 +84,11 @@ if(BUILD_UNIT_TESTS)
 endif()
 
 # Python 绑定（pybind11，需 `pip install pybind11`；默认关闭，库本体保持零第三方依赖）
-option(BEACON_ENABLE_PYTHON "Build Python bindings (pybind11; requires: pip install pybind11)" ON)
+option(BEACON_ENABLE_PYTHON "Build Python bindings (pybind11; requires: pip install pybind11)" OFF)
 if(BEACON_ENABLE_PYTHON)
+	if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+		message(FATAL_ERROR "Python bindings are Release-only (CPython official builds use Release CRT). Configure with x64-Release preset or set BEACON_ENABLE_PYTHON=OFF.")
+	endif()
   find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module)
   # pybind11 由 pip 提供，用 `python -m pybind11 --cmakedir` 定位其 CMake 配置目录
   execute_process(
