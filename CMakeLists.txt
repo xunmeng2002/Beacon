@@ -63,12 +63,14 @@ if(BUILD_UNIT_TESTS)
     add_subdirectory(test/unittest)
 endif()
 
-# Python 绑定（pybind11，需 `pip install pybind11`；默认关闭，库本体保持零第三方依赖）
-option(BEACON_ENABLE_PYTHON "Build Python bindings (pybind11; requires: pip install pybind11)" OFF)
-if(BEACON_ENABLE_PYTHON)
-	if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-		message(FATAL_ERROR "Python bindings are Release-only (CPython official builds use Release CRT). Configure with x64-Release preset or set BEACON_ENABLE_PYTHON=OFF.")
-	endif()
+# Python 绑定跟随构建类型：Debug 自动跳过（CPython 官方解释器为 Release CRT），非 Debug 自动启用；
+# 仅显式 -DBEACON_ENABLE_PYTHON=OFF 才整体关闭（缓存记住，切换配置无需删缓存重配）
+option(BEACON_ENABLE_PYTHON "Build Python bindings (pybind11; requires: pip install pybind11)" ON)
+if(NOT BEACON_ENABLE_PYTHON)
+	message(STATUS "Python bindings: disabled (BEACON_ENABLE_PYTHON=OFF)")
+elseif(CMAKE_BUILD_TYPE MATCHES "[Dd]ebug")
+	message(STATUS "Python bindings: skipped for Debug (CPython official builds use Release CRT)")
+else()
   find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module)
   # pybind11 由 pip 提供，用 `python -m pybind11 --cmakedir` 定位其 CMake 配置目录
   execute_process(
