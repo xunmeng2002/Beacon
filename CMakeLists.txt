@@ -18,32 +18,12 @@ set(CMAKE_DEBUG_POSTFIX "d")
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
 
-IF(CMAKE_SYSTEM_NAME MATCHES "Windows")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc /bigobj /utf-8")
-    add_definitions(-DWINDOWS -D_CRT_SECURE_NO_WARNINGS)
-    add_compile_options(
-        $<$<CONFIG:Debug>:/Od>
-        $<$<CONFIG:Debug>:/Zi>
-        $<$<CONFIG:Release>:/O2>
-        $<$<CONFIG:RelWithDebInfo>:/O2>
-        $<$<CONFIG:RelWithDebInfo>:/Zi>
-        $<$<CONFIG:MinSizeRel>:/O1>)
-ELSEIF(CMAKE_SYSTEM_NAME MATCHES "Linux")
-    add_definitions("-DLINUX")
-    add_compile_options(
-        $<$<CONFIG:Debug>:-O0>
-        $<$<CONFIG:Debug>:-g>
-        $<$<CONFIG:Debug>:-ggdb>
-        $<$<CONFIG:Release>:-O3>
-        $<$<CONFIG:RelWithDebInfo>:-O2>
-        $<$<CONFIG:RelWithDebInfo>:-g>
-        $<$<CONFIG:MinSizeRel>:-Os>)
-    add_compile_definitions(
-        $<$<CONFIG:Debug>:_DEBUG>
-        $<$<CONFIG:Release>:NDEBUG>
-        $<$<CONFIG:RelWithDebInfo>:NDEBUG>
-        $<$<CONFIG:MinSizeRel>:NDEBUG>)
-ENDIF()
+# 平台/配置相关编译选项：MSVC 的 /EHsc 及各配置优化级别、Linux 的 -g/-O 系、
+# NDEBUG（Release 系）均为 CMake+编译器默认行为，不再显式重复；仅保留净增量项
+if(WIN32)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+    add_compile_options(/bigobj /utf-8)
+endif()
 
 # x86_64 上开启 AVX2 加速点积；MSVC 用 /arch:AVX2，GCC/Clang 用 -mavx2
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
