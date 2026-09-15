@@ -27,11 +27,11 @@ endif()
 
 # x86_64 上开启 AVX2 加速点积；MSVC 用 /arch:AVX2，GCC/Clang 用 -mavx2
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
-  if(MSVC)
-    add_compile_options(/arch:AVX2)
-  else()
-    add_compile_options(-mavx2)
-  endif()
+    if(MSVC)
+        add_compile_options(/arch:AVX2)
+    else()
+        add_compile_options(-mavx2)
+    endif()
 endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin/$<CONFIG>)
@@ -48,13 +48,13 @@ target_link_libraries(TestBeacon PRIVATE BeaconStatic)
 # 可选基准：hnswlib 对比（需 vcpkg toolchain，见 README；库本身保持零第三方依赖）
 option(BEACON_ENABLE_BENCH "Build hnswlib comparison benchmark (requires vcpkg toolchain)" ON)
 if(BEACON_ENABLE_BENCH)
-  if(NOT DEFINED VCPKG_INSTALLED_DIR)
-    message(FATAL_ERROR "BEACON_ENABLE_BENCH=ON 需要 vcpkg toolchain：请用 CMakePresets 的 x64-Debug/x64-Release（已内置），"
+    if(NOT DEFINED VCPKG_INSTALLED_DIR)
+        message(FATAL_ERROR "BEACON_ENABLE_BENCH=ON 需要 vcpkg toolchain：请用 CMakePresets 的 x64-Debug/x64-Release（已内置），"
                         "或配置时追加 -DCMAKE_TOOLCHAIN_FILE=$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
-  endif()
-  find_package(hnswlib CONFIG REQUIRED)
-  add_executable(beacon_bench bench/bench_compare.cpp)
-  target_link_libraries(beacon_bench PRIVATE BeaconStatic hnswlib::hnswlib)
+    endif()
+    find_package(hnswlib CONFIG REQUIRED)
+    add_executable(beacon_bench bench/bench_compare.cpp)
+    target_link_libraries(beacon_bench PRIVATE BeaconStatic hnswlib::hnswlib)
 endif()
 
 # 单元测试（GoogleTest，需 vcpkg toolchain；无 vcpkg 构建时与 BEACON_ENABLE_BENCH 同理需显式关闭）
@@ -71,18 +71,18 @@ if(NOT BEACON_ENABLE_PYTHON)
 elseif(CMAKE_BUILD_TYPE MATCHES "[Dd]ebug")
 	message(STATUS "Python bindings: skipped for Debug (CPython official builds use Release CRT)")
 else()
-  find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module)
-  # pybind11 由 pip 提供，用 `python -m pybind11 --cmakedir` 定位其 CMake 配置目录
-  execute_process(
-    COMMAND "${Python3_EXECUTABLE}" -m pybind11 --cmakedir
-    RESULT_VARIABLE BEACON_PYBIND11_RC
-    OUTPUT_VARIABLE BEACON_PYBIND11_DIR
-    ERROR_QUIET)
-  if(NOT BEACON_PYBIND11_RC EQUAL 0)
-    message(FATAL_ERROR "BEACON_ENABLE_PYTHON=ON 需要 pybind11：请先运行 `pip install pybind11`")
-  endif()
-  string(STRIP "${BEACON_PYBIND11_DIR}" BEACON_PYBIND11_DIR)
-  set(pybind11_DIR "${BEACON_PYBIND11_DIR}" CACHE PATH "pybind11 CMake 配置目录（来自 pip）" FORCE)
-  find_package(pybind11 CONFIG REQUIRED)
-  add_subdirectory(bindings/python)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module)
+    # pybind11 由 pip 提供，用 `python -m pybind11 --cmakedir` 定位其 CMake 配置目录
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}" -m pybind11 --cmakedir
+        RESULT_VARIABLE BEACON_PYBIND11_RC
+        OUTPUT_VARIABLE BEACON_PYBIND11_DIR
+        ERROR_QUIET)
+    if(NOT BEACON_PYBIND11_RC EQUAL 0)
+        message(FATAL_ERROR "BEACON_ENABLE_PYTHON=ON 需要 pybind11：请先运行 `pip install pybind11`")
+    endif()
+    string(STRIP "${BEACON_PYBIND11_DIR}" BEACON_PYBIND11_DIR)
+    set(pybind11_DIR "${BEACON_PYBIND11_DIR}" CACHE PATH "pybind11 CMake 配置目录（来自 pip）" FORCE)
+    find_package(pybind11 CONFIG REQUIRED)
+    add_subdirectory(bindings/python)
 endif()
