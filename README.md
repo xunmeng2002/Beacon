@@ -9,7 +9,7 @@
   - 余弦模式在**插入时** L2 归一化，检索时只需一次点积，避免每次查询重复算范数
 - **SIMD 加速**：`x86_64` 上点积走 **AVX2**（8 路 float 并行），其余平台自动标量回退
 - **暴力 Top-K**：小规模数据直接全扫描 + 最小堆维护 K 个最优，结果按分数降序返回
-- **二进制持久化**：`magic("BEAC") + version + dim + metric + count + 数据 + 元数据`，加载时校验魔数与版本
+- **二进制持久化**：`Magic("BEAC") + Version(3) + Dim(u64) + MetricCode(u8) + SlotCount(u64)` 头部 + 向量 / tombstone / 元数据 / 索引四段，加载时校验魔数与版本
 - **元数据**：每个向量可携带任意字符串（文档 id、原文片段等）
 - **CRUD**：软删除（tombstone，数据不动、id 稳定）+ 就地更新（对已删除 id 执行则复活）
 - **并发支持**：`VectorDb` 门面 `shared_mutex` 读写锁——读读并行、读写/写写互斥；检索 visited 池为线程局部，多线程查询共享读锁安全
@@ -126,7 +126,7 @@ bin/  lib/              构建产物（按 $<CONFIG> 分目录：Release/Debug�
 ```cpp
 #include "Beacon/VectorDb.h"
 
-beacon::VectorDb db(384, beacon::Metric::kCosine);
+Beacon::VectorDb db(384, Beacon::Metric::Cosine);
 db.Add({ 0.1f, 0.2f, /* ... */ }, "文档A");
 
 db.Update(id, { 0.2f, 0.1f, /* ... */ }, "文档A(修订)");  // 就地更新

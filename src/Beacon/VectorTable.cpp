@@ -5,133 +5,133 @@
 #include <algorithm>
 #include <utility>
 
-namespace beacon {
+namespace Beacon {
 
-VectorTable::VectorTable(std::size_t dim, Metric metric) : dim_(dim), metric_(metric)
+VectorTable::VectorTable(std::size_t dim, Metric metric) : dim(dim), metric(metric)
 {
 }
 
 std::size_t VectorTable::Add(const std::vector<float>& vec, const std::string& meta)
 {
-    if (vec.size() != dim_)
+    if (vec.size() != dim)
     {
         return static_cast<std::size_t>(-1);
     }
     std::vector<float> stored = vec;
-    if (metric_ == Metric::kCosine)
+    if (metric == Metric::Cosine)
     {
-        L2Normalize(stored.data(), dim_);
+        L2Normalize(stored.data(), dim);
     }
-    data_.insert(data_.end(), stored.begin(), stored.end());
-    metadata_.push_back(meta);
-    deleted_.push_back(0);
-    ++live_count_;
-    return metadata_.size() - 1;
+    data.insert(data.end(), stored.begin(), stored.end());
+    metadata.push_back(meta);
+    deletedFlags.push_back(0);
+    ++liveCount;
+    return metadata.size() - 1;
 }
 
-void VectorTable::Reserve(std::size_t slot_count)
+void VectorTable::Reserve(std::size_t slotCount)
 {
-    const std::size_t float_count = slot_count * dim_;
-    // 溢出保护：dim_ 为 0 或乘积回绕时放弃预分配，Add 仍会按需扩容
-    if (dim_ == 0 || float_count / dim_ != slot_count)
+    const std::size_t floatCount = slotCount * dim;
+    // 溢出保护：dim 为 0 或乘积回绕时放弃预分配，Add 仍会按需扩容
+    if (dim == 0 || floatCount / dim != slotCount)
     {
         return;
     }
-    data_.reserve(float_count);
-    metadata_.reserve(slot_count);
-    deleted_.reserve(slot_count);
+    data.reserve(floatCount);
+    metadata.reserve(slotCount);
+    deletedFlags.reserve(slotCount);
 }
 
 bool VectorTable::Delete(std::size_t id)
 {
-    if (id >= metadata_.size() || deleted_[id] != 0)
+    if (id >= metadata.size() || deletedFlags[id] != 0)
     {
         return false;
     }
-    deleted_[id] = 1;
-    --live_count_;
+    deletedFlags[id] = 1;
+    --liveCount;
     return true;
 }
 
 bool VectorTable::Update(std::size_t id, const std::vector<float>& vec, const std::string& meta)
 {
-    if (id >= metadata_.size() || vec.size() != dim_)
+    if (id >= metadata.size() || vec.size() != dim)
     {
         return false;
     }
     std::vector<float> stored = vec;
-    if (metric_ == Metric::kCosine)
+    if (metric == Metric::Cosine)
     {
-        L2Normalize(stored.data(), dim_);
+        L2Normalize(stored.data(), dim);
     }
-    float* dst = data_.data() + id * dim_;
+    float* dst = data.data() + id * dim;
     std::copy(stored.begin(), stored.end(), dst);
-    metadata_[id] = meta;
-    if (deleted_[id] != 0)
+    metadata[id] = meta;
+    if (deletedFlags[id] != 0)
     {
-        deleted_[id] = 0;
-        ++live_count_;
+        deletedFlags[id] = 0;
+        ++liveCount;
     }
     return true;
 }
 
-std::size_t VectorTable::count() const
+std::size_t VectorTable::Count() const
 {
-    return live_count_;
+    return liveCount;
 }
 
-std::size_t VectorTable::slot_count() const
+std::size_t VectorTable::SlotCount() const
 {
-    return metadata_.size();
+    return metadata.size();
 }
 
-std::size_t VectorTable::dim() const
+std::size_t VectorTable::Dim() const
 {
-    return dim_;
+    return dim;
 }
 
-Metric VectorTable::metric() const
+Metric VectorTable::GetMetric() const
 {
-    return metric_;
+    return metric;
 }
 
-bool VectorTable::deleted(std::size_t id) const
+bool VectorTable::Deleted(std::size_t id) const
 {
-    return deleted_[id] != 0;
+    return deletedFlags[id] != 0;
 }
 
-const float* VectorTable::vector(std::size_t id) const
+const float* VectorTable::Vector(std::size_t id) const
 {
-    return data_.data() + id * dim_;
+    return data.data() + id * dim;
 }
 
-const float* VectorTable::data() const
+const float* VectorTable::FlatVectors() const
 {
-    return data_.data();
+    return data.data();
 }
 
-const std::string& VectorTable::metadata(std::size_t id) const
+const std::string& VectorTable::Metadata(std::size_t id) const
 {
-    return metadata_[id];
+    return metadata[id];
 }
 
-void VectorTable::set_data(std::size_t dim, Metric metric,
-                           std::vector<float> data, std::vector<std::string> metadata,
-                           std::vector<std::uint8_t> deleted)
+void VectorTable::SetData(std::size_t newDim, Metric newMetric,
+                          std::vector<float> newData, std::vector<std::string> newMetadata,
+                          std::vector<std::uint8_t> newDeletedFlags)
 {
-    dim_ = dim;
-    metric_ = metric;
-    data_ = std::move(data);
-    metadata_ = std::move(metadata);
-    deleted_ = std::move(deleted);
-    live_count_ = metadata_.size();
-    for (std::uint8_t flag : deleted_)
+    dim = newDim;
+    metric = newMetric;
+    data = std::move(newData);
+    metadata = std::move(newMetadata);
+    deletedFlags = std::move(newDeletedFlags);
+    liveCount = metadata.size();
+    for (std::uint8_t flag : deletedFlags)
     {
         if (flag != 0)
         {
-            --live_count_;
+            --liveCount;
         }
     }
 }
 
-}  // namespace beacon
+}  // namespace Beacon

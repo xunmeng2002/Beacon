@@ -1,22 +1,22 @@
-// 定长向量表：扁平连续存储（slot_count * dim），按 id 访问
+// 定长向量表：扁平连续存储（SlotCount() * Dim() 个 float），按 id 访问
 #pragma once
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
 
-namespace beacon {
+namespace Beacon {
 
 enum class Metric
 {
-    kCosine,        // 余弦相似度（文本 embedding 的默认选择）
-    kInnerProduct   // 内积（向量已归一化时等价于余弦）
+    Cosine,        // 余弦相似度（文本 embedding 的默认选择）
+    InnerProduct   // 内积（向量已归一化时等价于余弦）
 };
 
 struct Hit
 {
-    std::size_t id;
-    float score;
+    std::size_t Id;
+    float Score;
 };
 
 class VectorTable
@@ -35,34 +35,34 @@ public:
     bool Update(std::size_t id, const std::vector<float>& vec, const std::string& meta = {});
 
     // 按预期最大槽位数预分配连续存储，避免批量导入时多次扩容重排
-    void Reserve(std::size_t slot_count);
+    void Reserve(std::size_t slotCount);
 
-    std::size_t count() const;        // 存活向量数
-    std::size_t slot_count() const;   // 总槽位数（含 tombstone）
-    std::size_t dim() const;
-    Metric metric() const;
+    std::size_t Count() const;        // 存活向量数
+    std::size_t SlotCount() const;    // 总槽位数（含 tombstone）
+    std::size_t Dim() const;
+    Metric GetMetric() const;
 
-    // 前置条件：id < slot_count()（门面 VectorDb 已在越界前拦截，内部调用均满足；为免热路径分支不加检查）
-    bool deleted(std::size_t id) const;
-    const float* vector(std::size_t id) const;
-    const std::string& metadata(std::size_t id) const;
+    // 前置条件：id < SlotCount()（门面 VectorDb 已在越界前拦截，内部调用均满足；为免热路径分支不加检查）
+    bool Deleted(std::size_t id) const;
+    const float* Vector(std::size_t id) const;
+    const std::string& Metadata(std::size_t id) const;
 
-    // 扁平数据指针（供批量读写使用）
-    const float* data() const;
+    // 扁平向量缓冲首地址：SlotCount() * Dim() 个 float 连续存放，供整段序列化读写；单个向量用 Vector(id)
+    const float* FlatVectors() const;
 
     // 以已就绪数据构建（反序列化用）
-    void set_data(std::size_t dim, Metric metric,
-                  std::vector<float> data, std::vector<std::string> metadata,
-                  std::vector<std::uint8_t> deleted);
+    void SetData(std::size_t newDim, Metric newMetric,
+                 std::vector<float> newData, std::vector<std::string> newMetadata,
+                 std::vector<std::uint8_t> newDeletedFlags);
 
 private:
-    std::size_t dim_ = 0;
-    Metric metric_ = Metric::kCosine;
-    // data_[id * dim_, +dim_)
-    std::vector<float> data_;
-    std::vector<std::string> metadata_;
-    std::vector<std::uint8_t> deleted_;
-    std::size_t live_count_ = 0;
+    std::size_t dim = 0;
+    Metric metric = Metric::Cosine;
+    // data[id * dim, +dim)
+    std::vector<float> data;
+    std::vector<std::string> metadata;
+    std::vector<std::uint8_t> deletedFlags;
+    std::size_t liveCount = 0;
 };
 
-}  // namespace beacon
+}  // namespace Beacon

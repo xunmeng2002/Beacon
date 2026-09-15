@@ -6,7 +6,7 @@
 #include <immintrin.h>
 #endif
 
-namespace beacon {
+namespace Beacon {
 
 #if defined(__AVX2__)
 
@@ -74,4 +74,4 @@ void L2Normalize(float* vec, std::size_t n)
     }
 }
 
-}  // namespace beacon
+}  // namespace Beacon

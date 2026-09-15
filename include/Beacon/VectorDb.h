@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-namespace beacon {
+namespace Beacon {
 
 class VectorDb
 {
@@ -27,28 +27,28 @@ public:
     std::vector<Hit> SearchExact(const std::vector<float>& query, std::size_t k) const;
 
     // 按预期最大条数预分配向量表存储，批量导入前调用避免重复扩容
-    void Reserve(std::size_t slot_count);
+    void Reserve(std::size_t slotCount);
 
     // HNSW 索引：EnableIndex 全量构建；Delete/Update 后懒重建
-    void EnableIndex(std::size_t m = 16, std::size_t ef_construction = 200);
+    void EnableIndex(std::size_t m = 16, std::size_t efConstruction = 200);
     void DisableIndex();
     bool IndexEnabled() const;
     std::vector<Hit> SearchIndexed(const std::vector<float>& query, std::size_t k, std::size_t ef = 100) const;
 
-    std::size_t count() const;
-    std::size_t dim() const;
-    bool deleted(std::size_t id) const;
-    std::string metadata(std::size_t id) const;   // 按值：const& 会逃逸锁，并发 Add/Update 下悬垂
+    std::size_t Count() const;
+    std::size_t Dim() const;
+    bool Deleted(std::size_t id) const;
+    std::string Metadata(std::size_t id) const;   // 按值：const& 会逃逸锁，并发 Add/Update 下悬垂
 
     bool Save(const std::string& path) const;
     bool Load(const std::string& path);
     void Clear();
 
 private:
-    VectorTable table_;
-    std::unique_ptr<HnswIndex> index_;
-    mutable bool index_dirty_ = false;
-    mutable std::shared_mutex rw_mutex_;   // 门面读写锁：所有公有方法均须持有，读共享/写独占
+    VectorTable table;
+    std::unique_ptr<HnswIndex> index;
+    mutable bool indexDirty = false;
+    mutable std::shared_mutex rwMutex;     // 门面读写锁：所有公有方法均须持有，读共享/写独占
 };
 
-}  // namespace beacon
+}  // namespace Beacon

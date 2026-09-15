@@ -29,22 +29,22 @@ double NowMs()
 
 struct BenchParams
 {
-    std::size_t count;
-    std::size_t dim;
-    std::size_t m;
-    std::size_t ef_construction;
-    std::size_t ef;
-    std::size_t k;
-    std::size_t query_count;
+    std::size_t Count;
+    std::size_t Dim;
+    std::size_t MaxNeighbors;
+    std::size_t EfConstruction;
+    std::size_t Ef;
+    std::size_t K;
+    std::size_t QueryCount;
 };
 
 // 数据 = 原样（喂 Beacon，内部余弦归一化）+ L2 归一化副本（喂 hnswlib 与暴力基准）
 struct Dataset
 {
-    std::size_t count;
-    std::size_t dim;
-    std::vector<float> raw;
-    std::vector<float> normalized;
+    std::size_t Count;
+    std::size_t Dim;
+    std::vector<float> Raw;
+    std::vector<float> Normalized;
 };
 
 Dataset GenerateDataset(std::size_t count, std::size_t dim, std::uint32_t seed)
@@ -61,7 +61,7 @@ Dataset GenerateDataset(std::size_t count, std::size_t dim, std::uint32_t seed)
             x = dist(rng);
         }
         std::copy(row.begin(), row.end(), raw.begin() + static_cast<std::ptrdiff_t>(id * dim));
-        beacon::L2Normalize(row.data(), dim);
+        Beacon::L2Normalize(row.data(), dim);
         std::copy(row.begin(), row.end(), normalized.begin() + static_cast<std::ptrdiff_t>(id * dim));
     }
     return Dataset{ count, dim, std::move(raw), std::move(normalized) };
@@ -86,7 +86,7 @@ std::vector<std::vector<float>> GenerateQueries(std::size_t count, std::size_t d
 }
 
 // 独立暴力 top-K（归一化数据点积 = 余弦），作 ground truth；返回命中 id 集合（顺序无关）
-std::vector<std::size_t> BruteForceTopK(const std::vector<float>& query_norm, const Dataset& ds,
+std::vector<std::size_t> BruteForceTopK(const std::vector<float>& queryNorm, const Dataset& ds,
                                         std::size_t k)
 {
     struct WorstFirst
@@ -99,10 +99,10 @@ std::vector<std::size_t> BruteForceTopK(const std::vector<float>& query_norm, co
     };
     std::priority_queue<std::pair<float, std::size_t>,
                         std::vector<std::pair<float, std::size_t>>, WorstFirst> heap;
-    for (std::size_t id = 0; id < ds.count; ++id)
+    for (std::size_t id = 0; id < ds.Count; ++id)
     {
-        const float score = beacon::DotProduct(query_norm.data(),
-                                               ds.normalized.data() + id * ds.dim, ds.dim);
+        const float score = Beacon::DotProduct(queryNorm.data(),
+                                               ds.Normalized.data() + id * ds.Dim, ds.Dim);
         if (heap.size() < k)
         {
             heap.push(std::make_pair(score, id));
@@ -138,65 +138,65 @@ std::size_t OverlapCount(const std::vector<std::size_t>& approx, const std::vect
 
 struct BenchResult
 {
-    double build_ms;
-    double query_ms_total;
-    double recall;
+    double BuildMs;
+    double QueryMsTotal;
+    double Recall;
 };
 
-BenchResult RunBeacon(const Dataset& ds, const std::vector<std::vector<float>>& raw_queries,
-                         const BenchParams& p, const std::vector<std::vector<std::size_t>>& ground_truth)
+BenchResult RunBeacon(const Dataset& ds, const std::vector<std::vector<float>>& rawQueries,
+                         const BenchParams& p, const std::vector<std::vector<std::size_t>>& groundTruth)
 {
-    using namespace beacon;
-    VectorDb db(p.dim, Metric::kCosine);
-    db.Reserve(p.count);
-    std::vector<float> row(p.dim);
-    for (std::size_t id = 0; id < p.count; ++id)
+    using namespace Beacon;
+    VectorDb db(p.Dim, Metric::Cosine);
+    db.Reserve(p.Count);
+    std::vector<float> row(p.Dim);
+    for (std::size_t id = 0; id < p.Count; ++id)
     {
-        std::copy(ds.raw.data() + id * p.dim, ds.raw.data() + (id + 1) * p.dim, row.begin());
+        std::copy(ds.Raw.data() + id * p.Dim, ds.Raw.data() + (id + 1) * p.Dim, row.begin());
         db.Add(row, "");
     }
 
-    const double t_build = NowMs();
-    db.EnableIndex(p.m, p.ef_construction);
-    const double build_ms = NowMs() - t_build;
+    const double tBuild = NowMs();
+    db.EnableIndex(p.MaxNeighbors, p.EfConstruction);
+    const double buildMs = NowMs() - tBuild;
 
-    std::size_t total_hit = 0;
-    const double t_query = NowMs();
-    for (std::size_t i = 0; i < p.query_count; ++i)
+    std::size_t totalHit = 0;
+    const double tQuery = NowMs();
+    for (std::size_t i = 0; i < p.QueryCount; ++i)
     {
-        const std::vector<Hit> hits = db.SearchIndexed(raw_queries[i], p.k, p.ef);
+        const std::vector<Hit> hits = db.SearchIndexed(rawQueries[i], p.K, p.Ef);
         std::vector<std::size_t> ids;
         ids.reserve(hits.size());
         for (const Hit& h : hits)
         {
-            ids.push_back(h.id);
+            ids.push_back(h.Id);
         }
-        total_hit += OverlapCount(ids, ground_truth[i]);
+        totalHit += OverlapCount(ids, groundTruth[i]);
     }
-    const double query_ms = NowMs() - t_query;
-    const double recall = static_cast<double>(total_hit) / (p.query_count * p.k);
-    return BenchResult{ build_ms, query_ms, recall };
+    const double queryMs = NowMs() - tQuery;
+    const double recall = static_cast<double>(totalHit) / (p.QueryCount * p.K);
+    return BenchResult{ buildMs, queryMs, recall };
 }
 
-BenchResult RunHnswlib(const Dataset& ds, const std::vector<std::vector<float>>& norm_queries,
-                       const BenchParams& p, const std::vector<std::vector<std::size_t>>& ground_truth)
+BenchResult RunHnswlib(const Dataset& ds, const std::vector<std::vector<float>>& normQueries,
+                       const BenchParams& p, const std::vector<std::vector<std::size_t>>& groundTruth)
 {
-    hnswlib::InnerProductSpace space(p.dim);
-    hnswlib::HierarchicalNSW<float> index(&space, p.count, p.m, p.ef_construction, 42);
+    hnswlib::InnerProductSpace space(p.Dim);
+    hnswlib::HierarchicalNSW<float> index(&space, p.Count, p.MaxNeighbors, p.EfConstruction, 42);
 
-    const double t_build = NowMs();
-    for (std::size_t id = 0; id < p.count; ++id)
+    const double tBuild = NowMs();
+    for (std::size_t id = 0; id < p.Count; ++id)
     {
-        index.addPoint(ds.normalized.data() + id * p.dim, id);
+        index.addPoint(ds.Normalized.data() + id * p.Dim, id);
     }
-    const double build_ms = NowMs() - t_build;
+    const double buildMs = NowMs() - tBuild;
 
-    index.setEf(p.ef);
-    std::size_t total_hit = 0;
-    const double t_query = NowMs();
-    for (std::size_t i = 0; i < p.query_count; ++i)
+    index.setEf(p.Ef);
+    std::size_t totalHit = 0;
+    const double tQuery = NowMs();
+    for (std::size_t i = 0; i < p.QueryCount; ++i)
     {
-        auto result = index.searchKnn(norm_queries[i].data(), p.k);
+        auto result = index.searchKnn(normQueries[i].data(), p.K);
         std::vector<std::size_t> ids;
         ids.reserve(result.size());
         while (!result.empty())
@@ -204,11 +204,11 @@ BenchResult RunHnswlib(const Dataset& ds, const std::vector<std::vector<float>>&
             ids.push_back(result.top().second);
             result.pop();
         }
-        total_hit += OverlapCount(ids, ground_truth[i]);
+        totalHit += OverlapCount(ids, groundTruth[i]);
     }
-    const double query_ms = NowMs() - t_query;
-    const double recall = static_cast<double>(total_hit) / (p.query_count * p.k);
-    return BenchResult{ build_ms, query_ms, recall };
+    const double queryMs = NowMs() - tQuery;
+    const double recall = static_cast<double>(totalHit) / (p.QueryCount * p.K);
+    return BenchResult{ buildMs, queryMs, recall };
 }
 
 std::string Fmt1(double value)
@@ -227,40 +227,40 @@ std::string Fmt3(double value)
 
 void RunCase(const BenchParams& p)
 {
-    std::cout << "\n==== 用例：N=" << p.count << " D=" << p.dim << "  M=" << p.m
-              << " efC=" << p.ef_construction << " ef=" << p.ef << " k=" << p.k
-              << " Q=" << p.query_count << " ====\n";
+    std::cout << "\n==== 用例：N=" << p.Count << " D=" << p.Dim << "  M=" << p.MaxNeighbors
+              << " efC=" << p.EfConstruction << " ef=" << p.Ef << " k=" << p.K
+              << " Q=" << p.QueryCount << " ====\n";
 
-    const Dataset ds = GenerateDataset(p.count, p.dim, 7);
-    const std::vector<std::vector<float>> raw_queries = GenerateQueries(p.query_count, p.dim, 99);
-    std::vector<std::vector<float>> norm_queries = raw_queries;
-    for (std::vector<float>& q : norm_queries)
+    const Dataset ds = GenerateDataset(p.Count, p.Dim, 7);
+    const std::vector<std::vector<float>> rawQueries = GenerateQueries(p.QueryCount, p.Dim, 99);
+    std::vector<std::vector<float>> normQueries = rawQueries;
+    for (std::vector<float>& q : normQueries)
     {
-        beacon::L2Normalize(q.data(), q.size());
+        Beacon::L2Normalize(q.data(), q.size());
     }
 
-    std::vector<std::vector<std::size_t>> ground_truth;
-    ground_truth.reserve(p.query_count);
-    for (std::size_t i = 0; i < p.query_count; ++i)
+    std::vector<std::vector<std::size_t>> groundTruth;
+    groundTruth.reserve(p.QueryCount);
+    for (std::size_t i = 0; i < p.QueryCount; ++i)
     {
-        ground_truth.push_back(BruteForceTopK(norm_queries[i], ds, p.k));
+        groundTruth.push_back(BruteForceTopK(normQueries[i], ds, p.K));
     }
 
-    const BenchResult mine = RunBeacon(ds, raw_queries, p, ground_truth);
-    const BenchResult theirs = RunHnswlib(ds, norm_queries, p, ground_truth);
+    const BenchResult mine = RunBeacon(ds, rawQueries, p, groundTruth);
+    const BenchResult theirs = RunHnswlib(ds, normQueries, p, groundTruth);
 
-    const std::string recall_col = "recall@" + std::to_string(p.k);
+    const std::string recallCol = "recall@" + std::to_string(p.K);
     std::cout << "  " << std::left << std::setw(20) << "路径" << std::right
-              << std::setw(12) << "build_ms" << std::setw(12) << recall_col
+              << std::setw(12) << "build_ms" << std::setw(12) << recallCol
               << std::setw(12) << "ms/query" << "\n";
-    std::cout << "  " << std::left << std::setw(20) << "beacon(自研HNSW)" << std::right
-              << std::setw(12) << Fmt1(mine.build_ms)
-              << std::setw(12) << Fmt3(mine.recall)
-              << std::setw(12) << Fmt1(mine.query_ms_total / p.query_count) << "\n";
+    std::cout << "  " << std::left << std::setw(20) << "Beacon" << std::right
+              << std::setw(12) << Fmt1(mine.BuildMs)
+              << std::setw(12) << Fmt3(mine.Recall)
+              << std::setw(12) << Fmt1(mine.QueryMsTotal / p.QueryCount) << "\n";
     std::cout << "  " << std::left << std::setw(20) << "hnswlib" << std::right
-              << std::setw(12) << Fmt1(theirs.build_ms)
-              << std::setw(12) << Fmt3(theirs.recall)
-              << std::setw(12) << Fmt1(theirs.query_ms_total / p.query_count) << "\n";
+              << std::setw(12) << Fmt1(theirs.BuildMs)
+              << std::setw(12) << Fmt3(theirs.Recall)
+              << std::setw(12) << Fmt1(theirs.QueryMsTotal / p.QueryCount) << "\n";
 }
 
 }  // namespace

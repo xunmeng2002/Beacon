@@ -11,7 +11,7 @@
 #include <vector>
 
 namespace py = pybind11;
-using namespace beacon;
+using namespace Beacon;
 
 namespace
 {
@@ -60,19 +60,19 @@ PYBIND11_MODULE(beacon, m)
     m.doc() = "Beacon：自研 C++20 内存向量数据库（HNSW 近似检索 + 精确 Top-K）";
 
     py::enum_<Metric>(m, "Metric")
-        .value("kCosine", Metric::kCosine)
-        .value("kInnerProduct", Metric::kInnerProduct);
+        .value("kCosine", Metric::Cosine)
+        .value("kInnerProduct", Metric::InnerProduct);
 
     py::class_<Hit>(m, "Hit")
-        .def_readonly("id", &Hit::id)
-        .def_readonly("score", &Hit::score)
+        .def_readonly("id", &Hit::Id)
+        .def_readonly("score", &Hit::Score)
         .def("__repr__", [](const Hit& h)
         {
-            return "<Hit id=" + std::to_string(h.id) + " score=" + std::to_string(h.score) + ">";
+            return "<Hit id=" + std::to_string(h.Id) + " score=" + std::to_string(h.Score) + ">";
         });
 
     py::class_<VectorDb>(m, "VectorDb")
-        .def(py::init<std::size_t, Metric>(), py::arg("dim"), py::arg("metric") = Metric::kCosine)
+        .def(py::init<std::size_t, Metric>(), py::arg("dim"), py::arg("metric") = Metric::Cosine)
         .def("add",
              [](VectorDb& db, const py::array_t<float, py::array::c_style | py::array::forcecast>& vec,
                 const std::string& meta)
@@ -97,12 +97,12 @@ PYBIND11_MODULE(beacon, m)
         .def("disable_index", &VectorDb::DisableIndex)
         .def("index_enabled", &VectorDb::IndexEnabled)
         .def("search_indexed", &SearchIndexedImpl, py::arg("query"), py::arg("k"), py::arg("ef") = 100)
-        .def_property_readonly("count", &VectorDb::count)
-        .def_property_readonly("dim", &VectorDb::dim)
-        .def("deleted", &VectorDb::deleted, py::arg("id"))
-        .def("metadata", &VectorDb::metadata, py::arg("id"))
+        .def_property_readonly("count", &VectorDb::Count)
+        .def_property_readonly("dim", &VectorDb::Dim)
+        .def("deleted", &VectorDb::Deleted, py::arg("id"))
+        .def("metadata", &VectorDb::Metadata, py::arg("id"))
         .def("save", &VectorDb::Save, py::arg("path"))
         .def("load", &VectorDb::Load, py::arg("path"))
         .def("clear", &VectorDb::Clear)
-        .def("__len__", &VectorDb::count);
+        .def("__len__", &VectorDb::Count);
 }

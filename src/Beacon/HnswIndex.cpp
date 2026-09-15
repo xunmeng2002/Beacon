@@ -13,54 +13,54 @@
 #include <immintrin.h>
 #endif
 
-namespace beacon {
+namespace Beacon {
 
-HnswIndex::HnswIndex(const VectorTable* table, std::size_t m, std::size_t ef_construction)
-    : table_(table),
-      dim_(table->dim()),
-      metric_(table->metric()),
-      m_(std::max<std::size_t>(m, 3)),
-      ef_construction_(std::max<std::size_t>(ef_construction, 1)),
-      level_mult_(1.0 / std::log(static_cast<double>(m_))),
-      rng_(42),
-      level_rand_(0.0, 1.0)
+HnswIndex::HnswIndex(const VectorTable* table, std::size_t m, std::size_t efConstruction)
+    : table(table),
+      dim(table->Dim()),
+      metric(table->GetMetric()),
+      maxNeighbors(std::max<std::size_t>(m, 3)),
+      efConstruction(std::max<std::size_t>(efConstruction, 1)),
+      levelMultiplier(1.0 / std::log(static_cast<double>(maxNeighbors))),
+      rng(42),
+      levelDistribution(0.0, 1.0)
 {
 }
 
 int HnswIndex::RandomLevel()
 {
     int level = 0;
-    while (level_rand_(rng_) < level_mult_ && level < 32)
+    while (levelDistribution(rng) < levelMultiplier && level < 32)
     {
         ++level;
     }
     return level;
 }
 
-// 扁平邻接访问：每节点缓冲按层内联 [count, slots...]，层 0 容量 2M、上层 M
+// 扁平邻接访问：每节点缓冲按层内联 [count, slots...]，层 0 容量 2*maxNeighbors、上层 maxNeighbors
 std::size_t HnswIndex::LayerOffset(int layer) const
 {
-    return layer <= 0 ? 0 : 2 * m_ + 1 + static_cast<std::size_t>(layer - 1) * (m_ + 1);
+    return layer <= 0 ? 0 : 2 * maxNeighbors + 1 + static_cast<std::size_t>(layer - 1) * (maxNeighbors + 1);
 }
 
 std::size_t HnswIndex::LayerCapacity(int layer) const
 {
-    return layer == 0 ? 2 * m_ : m_;
+    return layer == 0 ? 2 * maxNeighbors : maxNeighbors;
 }
 
 std::size_t HnswIndex::BufferLength(int level) const
 {
-    return 2 * m_ + 1 + static_cast<std::size_t>(level) * (m_ + 1);
+    return 2 * maxNeighbors + 1 + static_cast<std::size_t>(level) * (maxNeighbors + 1);
 }
 
 HnswIndex::NeighborId* HnswIndex::LayerCountPtr(std::size_t node, int layer)
 {
-    return links_[node].data() + LayerOffset(layer);
+    return links[node].data() + LayerOffset(layer);
 }
 
 const HnswIndex::NeighborId* HnswIndex::LayerCountPtr(std::size_t node, int layer) const
 {
-    return links_[node].data() + LayerOffset(layer);
+    return links[node].data() + LayerOffset(layer);
 }
 
 HnswIndex::NeighborId* HnswIndex::LayerSlots(std::size_t node, int layer)
@@ -80,8 +80,8 @@ std::size_t HnswIndex::LayerCount(std::size_t node, int layer) const
 
 void HnswIndex::AddLink(int layer, std::size_t node, NeighborId neighbor)
 {
-    if (node >= node_level_.size() || layer < 0 || node_level_[node] < 0 ||
-        static_cast<std::size_t>(layer) > static_cast<std::size_t>(node_level_[node]))
+    if (node >= nodeLevels.size() || layer < 0 || nodeLevels[node] < 0 ||
+        static_cast<std::size_t>(layer) > static_cast<std::size_t>(nodeLevels[node]))
     {
         return;
     }
@@ -102,19 +102,19 @@ void HnswIndex::AddLink(int layer, std::size_t node, NeighborId neighbor)
         return;
     }
     // 已满：替换"最远者"等价于"加入后保留最近 capacity 个"，免扩容
-    const float* nvec = table_->vector(node);
+    const float* nvec = table->Vector(node);
     std::size_t weakest = 0;
-    float weakest_score = DotProduct(nvec, table_->vector(slots[0]), dim_);
+    float weakest_score = DotProduct(nvec, table->Vector(slots[0]), dim);
     for (std::size_t j = 1; j < *count; ++j)
     {
-        const float score = DotProduct(nvec, table_->vector(slots[j]), dim_);
+        const float score = DotProduct(nvec, table->Vector(slots[j]), dim);
         if (score < weakest_score)
         {
             weakest_score = score;
             weakest = j;
         }
     }
-    if (DotProduct(nvec, table_->vector(nbr), dim_) > weakest_score)
+    if (DotProduct(nvec, table->Vector(nbr), dim) > weakest_score)
     {
         slots[weakest] = nbr;
     }
@@ -126,36 +126,36 @@ std::vector<HnswIndex::Candidate> HnswIndex::SearchLayer(
 {
     const auto score = [this, query](std::size_t id)
     {
-        return DotProduct(query, table_->vector(id), dim_);
+        return DotProduct(query, table->Vector(id), dim);
     };
     // 候选集：大根堆按 score，堆顶 = 最近（优先探索）
-    auto closest_first = [](const Candidate& a, const Candidate& b)
+    auto closestFirst = [](const Candidate& a, const Candidate& b)
     {
-        return a.score < b.score;
+        return a.Score < b.Score;
     };
     // 结果集：小根堆，堆顶 = 最差（淘汰用）
-    auto worst_first = [](const Candidate& a, const Candidate& b)
+    auto worstFirst = [](const Candidate& a, const Candidate& b)
     {
-        return a.score > b.score;
+        return a.Score > b.Score;
     };
 
-    // 已访问标记：函数级 thread_local buffer + 自增 generation，免每次清零 O(slot_count)，
+    // 已访问标记：函数级 thread_local buffer + 自增 generation，免每次清零 O(SlotCount())，
     // 且线程隔离 → 并发 Search 可共享读锁；跨实例共享安全（buffer 只增不减、标签按线程唯一）
-    static thread_local std::vector<std::uint32_t> visited_tags;
-    static thread_local std::uint32_t visited_generation = 0;
-    if (visited_tags.size() < table_->slot_count())
+    static thread_local std::vector<std::uint32_t> visitedTags;
+    static thread_local std::uint32_t visitedGeneration = 0;
+    if (visitedTags.size() < table->SlotCount())
     {
-        visited_tags.assign(table_->slot_count(), 0);
+        visitedTags.assign(table->SlotCount(), 0);
     }
-    const std::uint32_t tag = ++visited_generation;
-    std::vector<std::uint32_t>& visited = visited_tags;
+    const std::uint32_t tag = ++visitedGeneration;
+    std::vector<std::uint32_t>& visited = visitedTags;
     visited[entry_id] = tag;
 
     // 堆内携带已算好的 score：只在发现节点时算一次，避免每次堆比较重算点积
-    std::priority_queue<Candidate, std::vector<Candidate>, decltype(closest_first)>
-        candidates(closest_first);
-    std::priority_queue<Candidate, std::vector<Candidate>, decltype(worst_first)>
-        best(worst_first);
+    std::priority_queue<Candidate, std::vector<Candidate>, decltype(closestFirst)>
+        candidates(closestFirst);
+    std::priority_queue<Candidate, std::vector<Candidate>, decltype(worstFirst)>
+        best(worstFirst);
     const Candidate entry{ entry_id, score(entry_id) };
     candidates.push(entry);
     best.push(entry);
@@ -164,29 +164,29 @@ std::vector<HnswIndex::Candidate> HnswIndex::SearchLayer(
     {
         const Candidate cur = candidates.top();   // 最近候选
         candidates.pop();
-        if (best.size() >= ef && cur.score < best.top().score)
+        if (best.size() >= ef && cur.Score < best.top().Score)
         {
             break;
         }
-        const std::size_t layer_count = LayerCount(cur.id, layer);
-        const NeighborId* const layer_slots = LayerSlots(cur.id, layer);
-        for (std::size_t j = 0; j < layer_count; ++j)
+        const std::size_t layerCount = LayerCount(cur.Id, layer);
+        const NeighborId* const layerSlots = LayerSlots(cur.Id, layer);
+        for (std::size_t j = 0; j < layerCount; ++j)
         {
 #if defined(__AVX2__)
-            if (j + 1 < layer_count)
+            if (j + 1 < layerCount)
             {
-                _mm_prefetch(reinterpret_cast<const char*>(table_->vector(layer_slots[j + 1])),
+                _mm_prefetch(reinterpret_cast<const char*>(table->Vector(layerSlots[j + 1])),
                              _MM_HINT_T0);
             }
 #endif
-            const std::size_t nbr = layer_slots[j];
-            if (table_->deleted(nbr) || visited[nbr] == tag)
+            const std::size_t nbr = layerSlots[j];
+            if (table->Deleted(nbr) || visited[nbr] == tag)
             {
                 continue;
             }
             visited[nbr] = tag;
             const float nscore = score(nbr);
-            if (best.size() < ef || nscore > best.top().score)
+            if (best.size() < ef || nscore > best.top().Score)
             {
                 candidates.push(Candidate{ nbr, nscore });
                 best.push(Candidate{ nbr, nscore });
@@ -220,7 +220,7 @@ std::vector<std::size_t> HnswIndex::SelectNeighbors(
         all.reserve(candidates.size());
         for (const Candidate& c : candidates)
         {
-            all.push_back(c.id);
+            all.push_back(c.Id);
         }
         return all;
     }
@@ -236,8 +236,8 @@ std::vector<std::size_t> HnswIndex::SelectNeighbors(
         bool keep = true;
         for (std::size_t r : result)
         {
-            const float d_cr = DotProduct(table_->vector(c.id), table_->vector(r), dim_);
-            if (d_cr > c.score)   // c 与 r 比与 query 更近 → c 冗余
+            const float dCr = DotProduct(table->Vector(c.Id), table->Vector(r), dim);
+            if (dCr > c.Score)   // c 与 r 比与 query 更近 → c 冗余
             {
                 keep = false;
                 break;
@@ -245,7 +245,7 @@ std::vector<std::size_t> HnswIndex::SelectNeighbors(
         }
         if (keep)
         {
-            result.push_back(c.id);
+            result.push_back(c.Id);
         }
     }
     for (const Candidate& c : candidates)   // 启发式选不满则用最近补足
@@ -254,9 +254,9 @@ std::vector<std::size_t> HnswIndex::SelectNeighbors(
         {
             break;
         }
-        if (std::find(result.begin(), result.end(), c.id) == result.end())
+        if (std::find(result.begin(), result.end(), c.Id) == result.end())
         {
-            result.push_back(c.id);
+            result.push_back(c.Id);
         }
     }
     return result;
@@ -264,7 +264,7 @@ std::vector<std::size_t> HnswIndex::SelectNeighbors(
 
 void HnswIndex::EraseFromLayer(std::size_t node, int layer, NeighborId neighbor)
 {
-    if (node >= node_level_.size() || node_level_[node] < 0)
+    if (node >= nodeLevels.size() || nodeLevels[node] < 0)
     {
         return;
     }
@@ -283,77 +283,77 @@ void HnswIndex::EraseFromLayer(std::size_t node, int layer, NeighborId neighbor)
 
 void HnswIndex::Add(std::size_t id)
 {
-    if (table_->deleted(id))
+    if (table->Deleted(id))
     {
         return;
     }
-    if (id < node_level_.size() && node_level_[id] >= 0)
+    if (id < nodeLevels.size() && nodeLevels[id] >= 0)
     {
         Remove(id);   // 幂等：已在图中则先移除，再按当前向量重插
     }
-    if (node_level_.size() <= id)
+    if (nodeLevels.size() <= id)
     {
-        node_level_.resize(id + 1, -1);
-        links_.resize(id + 1);
+        nodeLevels.resize(id + 1, -1);
+        links.resize(id + 1);
     }
 
-    const float* vec = table_->vector(id);
-    const int new_level = RandomLevel();
-    node_level_[id] = new_level;
-    links_[id].assign(BufferLength(new_level), 0);
+    const float* vec = table->Vector(id);
+    const int newLevel = RandomLevel();
+    nodeLevels[id] = newLevel;
+    links[id].assign(BufferLength(newLevel), 0);
 
-    if (enter_point_ < 0)
+    if (enterPoint < 0)
     {
-        enter_point_ = static_cast<int>(id);
-        top_level_ = new_level;
+        enterPoint = static_cast<int>(id);
+        topLevel = newLevel;
         return;
     }
 
-    // 从最高层贪心下探到 new_level 上方，收集入口
-    int entry = enter_point_;
-    for (int layer = top_level_; layer > new_level; --layer)
+    // 从最高层贪心下探到 newLevel 上方，收集入口
+    int entry = enterPoint;
+    for (int layer = topLevel; layer > newLevel; --layer)
     {
         const std::vector<Candidate> ep = SearchLayer(vec, static_cast<std::size_t>(entry), 1, layer);
-        entry = static_cast<int>(ep.front().id);
+        entry = static_cast<int>(ep.front().Id);
     }
 
-    // 从 min(new_level, top_level_) 到 0 逐层建立双向连接并修剪邻居
-    for (int layer = std::min(new_level, top_level_); layer >= 0; --layer)
+    // 从 min(newLevel, topLevel) 到 0 逐层建立双向连接并修剪邻居
+    for (int layer = std::min(newLevel, topLevel); layer >= 0; --layer)
     {
-        const std::vector<Candidate> candidates = SearchLayer(vec, static_cast<std::size_t>(entry), ef_construction_, layer);
-        const std::vector<std::size_t> neighbors = SelectNeighbors(candidates, m_);
+        const std::vector<Candidate> candidates = SearchLayer(vec, static_cast<std::size_t>(entry), efConstruction, layer);
+        const std::vector<std::size_t> neighbors = SelectNeighbors(candidates, maxNeighbors);
         for (std::size_t nbr : neighbors)
         {
             AddLink(layer, id, nbr);
             AddLink(layer, nbr, id);
         }
-        entry = static_cast<int>(candidates.front().id);
+        entry = static_cast<int>(candidates.front().Id);
     }
 
-    if (new_level > top_level_)
+    if (newLevel > topLevel)
     {
-        enter_point_ = static_cast<int>(id);
-        top_level_ = new_level;
+        enterPoint = static_cast<int>(id);
+        topLevel = newLevel;
     }
 }
 
 void HnswIndex::Remove(std::size_t id)
 {
-    if (id >= node_level_.size() || node_level_[id] < 0)
+    if (id >= nodeLevels.size() || nodeLevels[id] < 0)
     {
         return;   // 不在图中
     }
-    const int node_level = node_level_[id];
-    for (int layer = 0; layer <= node_level; ++layer)
+    const int nodeLevel = nodeLevels[id];
+    for (int layer = 0; layer <= nodeLevel; ++layer)
     {
-        const std::size_t layer_count = LayerCount(id, layer);
-        const NeighborId* const id_slots = LayerSlots(id, layer);
+        const std::size_t layerCount = LayerCount(id, layer);
+        const NeighborId* const idSlots = LayerSlots(id, layer);
         std::vector<std::size_t> neighbors;
-        neighbors.reserve(layer_count);
-        for (std::size_t j = 0; j < layer_count; ++j)
+        neighbors.reserve(layerCount);
+        for (std::size_t j = 0; j < layerCount; ++j)
         {
-            const std::size_t nbr = id_slots[j];
-            if (table_->deleted(nbr))
+            const std::size_t nbr = idSlots[j];
+            if (table->Deleted(nbr))
             {
                 continue;
             }
@@ -366,12 +366,12 @@ void HnswIndex::Remove(std::size_t id)
         for (std::size_t i = 0; i < neighbors.size(); ++i)
         {
             std::vector<std::size_t> desired;
-            desired.reserve(layer_count + neighbors.size());
-            const std::size_t cur_count = LayerCount(neighbors[i], layer);
-            const NeighborId* const cur_slots = LayerSlots(neighbors[i], layer);
-            for (std::size_t k = 0; k < cur_count; ++k)
+            desired.reserve(layerCount + neighbors.size());
+            const std::size_t curCount = LayerCount(neighbors[i], layer);
+            const NeighborId* const curSlots = LayerSlots(neighbors[i], layer);
+            for (std::size_t k = 0; k < curCount; ++k)
             {
-                desired.push_back(cur_slots[k]);
+                desired.push_back(curSlots[k]);
             }
             for (std::size_t j = 0; j < neighbors.size(); ++j)
             {
@@ -383,12 +383,12 @@ void HnswIndex::Remove(std::size_t id)
             }
             if (desired.size() > capacity)
             {
-                const float* nvec = table_->vector(neighbors[i]);
+                const float* nvec = table->Vector(neighbors[i]);
                 std::partial_sort(desired.begin(), desired.begin() + capacity, desired.end(),
                                   [this, nvec](std::size_t id_a, std::size_t id_b)
                                   {
-                                      return DotProduct(nvec, table_->vector(id_a), dim_) >
-                                             DotProduct(nvec, table_->vector(id_b), dim_);
+                                      return DotProduct(nvec, table->Vector(id_a), dim) >
+                                             DotProduct(nvec, table->Vector(id_b), dim);
                                   });
                 desired.resize(capacity);
             }
@@ -401,55 +401,55 @@ void HnswIndex::Remove(std::size_t id)
             }
         }
     }
-    node_level_[id] = -1;
-    links_[id].clear();
-    if (enter_point_ == static_cast<int>(id))
+    nodeLevels[id] = -1;
+    links[id].clear();
+    if (enterPoint == static_cast<int>(id))
     {
         // 入口被删：退到任一层 0 存活节点
-        enter_point_ = -1;
-        for (std::size_t i = 0; i < node_level_.size(); ++i)
+        enterPoint = -1;
+        for (std::size_t i = 0; i < nodeLevels.size(); ++i)
         {
-            if (node_level_[i] >= 0)
+            if (nodeLevels[i] >= 0)
             {
-                enter_point_ = static_cast<int>(i);
+                enterPoint = static_cast<int>(i);
                 break;
             }
         }
-        top_level_ = enter_point_ >= 0
-            ? node_level_[static_cast<std::size_t>(enter_point_)]
+        topLevel = enterPoint >= 0
+            ? nodeLevels[static_cast<std::size_t>(enterPoint)]
             : 0;
     }
 }
 
 bool HnswIndex::Write(std::ostream& out) const
 {
-    const auto write_u64 = [&out](std::uint64_t value)
+    const auto writeU64 = [&out](std::uint64_t value)
     {
         out.write(reinterpret_cast<const char*>(&value), sizeof(value));
     };
-    const auto write_i32 = [&out](std::int32_t value)
+    const auto writeI32 = [&out](std::int32_t value)
     {
         out.write(reinterpret_cast<const char*>(&value), sizeof(value));
     };
 
-    write_u64(static_cast<std::uint64_t>(m_));
-    write_u64(static_cast<std::uint64_t>(ef_construction_));
-    write_i32(static_cast<std::int32_t>(enter_point_));
-    write_i32(static_cast<std::int32_t>(top_level_));
-    write_u64(static_cast<std::uint64_t>(node_level_.size()));
-    for (std::size_t id = 0; id < node_level_.size(); ++id)
+    writeU64(static_cast<std::uint64_t>(maxNeighbors));
+    writeU64(static_cast<std::uint64_t>(efConstruction));
+    writeI32(static_cast<std::int32_t>(enterPoint));
+    writeI32(static_cast<std::int32_t>(topLevel));
+    writeU64(static_cast<std::uint64_t>(nodeLevels.size()));
+    for (std::size_t id = 0; id < nodeLevels.size(); ++id)
     {
-        write_i32(static_cast<std::int32_t>(node_level_[id]));
-        if (node_level_[id] < 0)
+        writeI32(static_cast<std::int32_t>(nodeLevels[id]));
+        if (nodeLevels[id] < 0)
         {
             continue;
         }
         for (std::size_t layer = 0;
-             layer < static_cast<std::size_t>(node_level_[id] + 1); ++layer)
+             layer < static_cast<std::size_t>(nodeLevels[id] + 1); ++layer)
         {
             const std::size_t count = LayerCount(id, static_cast<int>(layer));
             const NeighborId* const slots = LayerSlots(id, static_cast<int>(layer));
-            write_u64(static_cast<std::uint64_t>(count));
+            writeU64(static_cast<std::uint64_t>(count));
             for (std::size_t j = 0; j < count; ++j)
             {
                 out.write(reinterpret_cast<const char*>(&slots[j]), sizeof(slots[j]));
@@ -461,44 +461,44 @@ bool HnswIndex::Write(std::ostream& out) const
 
 bool HnswIndex::Read(std::istream& in)
 {
-    const auto read_u64 = [&in](std::uint64_t& value)
+    const auto readU64 = [&in](std::uint64_t& value)
     {
         in.read(reinterpret_cast<char*>(&value), sizeof(value));
         return static_cast<bool>(in);
     };
-    const auto read_i32 = [&in](std::int32_t& value)
+    const auto readI32 = [&in](std::int32_t& value)
     {
         in.read(reinterpret_cast<char*>(&value), sizeof(value));
         return static_cast<bool>(in);
     };
-    const auto read_u32 = [&in](std::uint32_t& value)
+    const auto readU32 = [&in](std::uint32_t& value)
     {
         in.read(reinterpret_cast<char*>(&value), sizeof(value));
         return static_cast<bool>(in);
     };
 
-    std::uint64_t m = 0;
-    std::uint64_t ef_construction = 0;
-    std::int32_t enter_point = 0;
-    std::int32_t top_level = 0;
-    std::uint64_t slot_count = 0;
-    if (!read_u64(m) || !read_u64(ef_construction) || !read_i32(enter_point) ||
-        !read_i32(top_level) || !read_u64(slot_count) ||
-        slot_count != table_->slot_count())
+    std::uint64_t storedM = 0;
+    std::uint64_t storedEfConstruction = 0;
+    std::int32_t storedEnterPoint = 0;
+    std::int32_t storedTopLevel = 0;
+    std::uint64_t storedSlotCount = 0;
+    if (!readU64(storedM) || !readU64(storedEfConstruction) || !readI32(storedEnterPoint) ||
+        !readI32(storedTopLevel) || !readU64(storedSlotCount) ||
+        storedSlotCount != table->SlotCount())
     {
         return false;
     }
 
-    m_ = std::max<std::size_t>(m, 3);
-    ef_construction_ = std::max<std::size_t>(ef_construction, 1);
-    level_mult_ = 1.0 / std::log(static_cast<double>(m_));
+    maxNeighbors = std::max<std::size_t>(storedM, 3);
+    efConstruction = std::max<std::size_t>(storedEfConstruction, 1);
+    levelMultiplier = 1.0 / std::log(static_cast<double>(maxNeighbors));
 
-    node_level_.assign(static_cast<std::size_t>(slot_count), -1);
-    links_.assign(static_cast<std::size_t>(slot_count), {});
-    for (std::size_t id = 0; id < node_level_.size(); ++id)
+    nodeLevels.assign(static_cast<std::size_t>(storedSlotCount), -1);
+    links.assign(static_cast<std::size_t>(storedSlotCount), {});
+    for (std::size_t id = 0; id < nodeLevels.size(); ++id)
     {
         std::int32_t level = 0;
-        if (!read_i32(level) || level < -1 || level > 32)
+        if (!readI32(level) || level < -1 || level > 32)
         {
             return false;
         }
@@ -506,26 +506,26 @@ bool HnswIndex::Read(std::istream& in)
         {
             continue;
         }
-        if (table_->deleted(id))
+        if (table->Deleted(id))
         {
             return false;   // 图中不允许出现已删除槽位
         }
-        node_level_[id] = static_cast<int>(level);
-        links_[id].assign(BufferLength(level), 0);
+        nodeLevels[id] = static_cast<int>(level);
+        links[id].assign(BufferLength(level), 0);
         for (std::size_t layer = 0; layer < static_cast<std::size_t>(level + 1); ++layer)
         {
-            std::uint64_t neighbor_count = 0;
-            if (!read_u64(neighbor_count) || neighbor_count > LayerCapacity(layer))
+            std::uint64_t neighborCount = 0;
+            if (!readU64(neighborCount) || neighborCount > LayerCapacity(layer))
             {
                 return false;
             }
             NeighborId* const count = LayerCountPtr(id, static_cast<int>(layer));
             NeighborId* const slots = LayerSlots(id, static_cast<int>(layer));
-            *count = static_cast<NeighborId>(neighbor_count);
-            for (std::uint64_t i = 0; i < neighbor_count; ++i)
+            *count = static_cast<NeighborId>(neighborCount);
+            for (std::uint64_t i = 0; i < neighborCount; ++i)
             {
                 NeighborId nbr = 0;
-                if (!read_u32(nbr) || static_cast<std::size_t>(nbr) >= node_level_.size())
+                if (!readU32(nbr) || static_cast<std::size_t>(nbr) >= nodeLevels.size())
                 {
                     return false;   // 引用越界 → 判为无效
                 }
@@ -534,29 +534,29 @@ bool HnswIndex::Read(std::istream& in)
         }
     }
 
-    if (enter_point < -1 || top_level < 0 ||
-        (enter_point >= 0 &&
-         (static_cast<std::size_t>(enter_point) >= node_level_.size() ||
-          node_level_[static_cast<std::size_t>(enter_point)] < 0 ||
-          top_level != node_level_[static_cast<std::size_t>(enter_point)])) ||
-        node_count() != table_->count())
+    if (storedEnterPoint < -1 || storedTopLevel < 0 ||
+        (storedEnterPoint >= 0 &&
+         (static_cast<std::size_t>(storedEnterPoint) >= nodeLevels.size() ||
+          nodeLevels[static_cast<std::size_t>(storedEnterPoint)] < 0 ||
+          storedTopLevel != nodeLevels[static_cast<std::size_t>(storedEnterPoint)])) ||
+        NodeCount() != table->Count())
     {
         return false;   // 入口/层高不一致，或图中节点数 ≠ 存活向量数 → 判为无效
     }
 
-    enter_point_ = enter_point;
-    top_level_ = top_level;
+    enterPoint = storedEnterPoint;
+    topLevel = storedTopLevel;
     return true;
 }
 
 void HnswIndex::Rebuild()
 {
     Clear();
-    node_level_.assign(table_->slot_count(), -1);
-    links_.assign(table_->slot_count(), {});
-    for (std::size_t id = 0; id < table_->slot_count(); ++id)
+    nodeLevels.assign(table->SlotCount(), -1);
+    links.assign(table->SlotCount(), {});
+    for (std::size_t id = 0; id < table->SlotCount(); ++id)
     {
-        if (!table_->deleted(id))
+        if (!table->Deleted(id))
         {
             Add(id);
         }
@@ -565,32 +565,32 @@ void HnswIndex::Rebuild()
 
 void HnswIndex::Clear()
 {
-    node_level_.clear();
-    links_.clear();
-    enter_point_ = -1;
-    top_level_ = 0;
+    nodeLevels.clear();
+    links.clear();
+    enterPoint = -1;
+    topLevel = 0;
 }
 
 std::vector<Hit> HnswIndex::Search(const std::vector<float>& query, std::size_t k, std::size_t ef) const
 {
     std::vector<Hit> result;
-    if (enter_point_ < 0 || k == 0 || query.size() != dim_)
+    if (enterPoint < 0 || k == 0 || query.size() != dim)
     {
         return result;
     }
 
     std::vector<float> q = query;
-    if (metric_ == Metric::kCosine)
+    if (metric == Metric::Cosine)
     {
         L2Normalize(q.data(), q.size());
     }
 
     // 从顶层贪心下探到第 0 层
-    int entry = enter_point_;
-    for (int layer = top_level_; layer > 0; --layer)
+    int entry = enterPoint;
+    for (int layer = topLevel; layer > 0; --layer)
     {
         const std::vector<Candidate> ep = SearchLayer(q.data(), static_cast<std::size_t>(entry), 1, layer);
-        entry = static_cast<int>(ep.front().id);
+        entry = static_cast<int>(ep.front().Id);
     }
 
     const std::vector<Candidate> candidates =
@@ -599,15 +599,15 @@ std::vector<Hit> HnswIndex::Search(const std::vector<float>& query, std::size_t 
     result.reserve(cap);
     for (std::size_t i = 0; i < cap; ++i)
     {
-        result.push_back(Hit{ candidates[i].id, candidates[i].score });
+        result.push_back(Hit{ candidates[i].Id, candidates[i].Score });
     }
     return result;
 }
 
-std::size_t HnswIndex::node_count() const
+std::size_t HnswIndex::NodeCount() const
 {
     std::size_t n = 0;
-    for (int level : node_level_)
+    for (int level : nodeLevels)
     {
         if (level >= 0)
         {
@@ -617,4 +617,4 @@ std::size_t HnswIndex::node_count() const
     return n;
 }
 
-}  // namespace beacon
+}  // namespace Beacon

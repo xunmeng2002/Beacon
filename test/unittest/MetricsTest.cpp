@@ -6,7 +6,7 @@
 #include <random>
 #include <vector>
 
-using namespace beacon;
+using namespace Beacon;
 
 TEST(MetricsTest, DotProductMatchesNaiveReference)
 {
