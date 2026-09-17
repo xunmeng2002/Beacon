@@ -13,22 +13,13 @@ namespace Beacon {
 class HnswIndex
 {
 public:
-    // 图引用 table 的向量与删除状态；维度/度量取自 table
     HnswIndex(const VectorTable* table, std::size_t m = 16, std::size_t efConstruction = 200);
-
-    // 将 table 中一个存活向量增量插入图；若该 id 已在图中则先移除再按当前向量重插
     void Add(std::size_t id);
-
-    // 将节点从图中移除（删除/重插共用）；不在图中则无操作
     void Remove(std::size_t id);
-
-    // 清空并按 table 当前存活向量全量重建
     void Rebuild();
 
     // 近似 top-K；ef 为搜索宽度（越大越准越慢）
     std::vector<Hit> Search(const std::vector<float>& query, std::size_t k, std::size_t ef) const;
-
-    // 序列化/反序列化图结构；Read 失败返回 false，调用方应标记重建
     bool Write(std::ostream& out) const;
     bool Read(std::istream& in);
 
@@ -59,21 +50,21 @@ private:
     const NeighborId* LayerSlots(std::size_t node, int layer) const;
     std::size_t LayerCount(std::size_t node, int layer) const;
 
-    const VectorTable* table;
-    std::size_t dim;
-    Metric metric;
-    std::size_t maxNeighbors;
-    std::size_t efConstruction;
-    double levelMultiplier;                 // 1 / ln(maxNeighbors)
+    const VectorTable* table_;
+    std::size_t dim_;
+    Metric metric_;
+    std::size_t maxNeighbors_;
+    std::size_t efConstruction_;
+    double levelMultiplier_;                 // 1 / ln(maxNeighbors)
 
-    std::vector<int> nodeLevels;            // 按 slot id，-1 = 未入图
-    std::vector<std::vector<NeighborId>> links;   // [slot][扁平层缓冲：层 0 容量 2*maxNeighbors、上层 maxNeighbors，count 内联于层首]
+    std::vector<int> nodeLevels_;            // 按 slot id，-1 = 未入图
+    std::vector<std::vector<NeighborId>> links_;   // [slot][扁平层缓冲：层 0 容量 2*maxNeighbors、上层 maxNeighbors，count 内联于层首]
 
-    int enterPoint = -1;
-    int topLevel = 0;
+    int enterPoint_ = -1;
+    int topLevel_ = 0;
 
-    mutable std::mt19937 rng;
-    mutable std::uniform_real_distribution<double> levelDistribution;
+    mutable std::mt19937 rng_;
+    mutable std::uniform_real_distribution<double> levelDistribution_;
 };
 
 }  // namespace Beacon

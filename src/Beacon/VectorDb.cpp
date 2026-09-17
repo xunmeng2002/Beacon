@@ -70,29 +70,25 @@ bool ReadStr(std::ifstream& in, std::string& s)
     return static_cast<bool>(in);
 }
 
-bool WriteVectorData(std::ofstream& out, const VectorTable& table)
+bool WriteVectorData(std::ofstream& out, const VectorTable& table_)
 {
-    const std::uint64_t floatCount =
-        static_cast<std::uint64_t>(table.Dim()) * static_cast<std::uint64_t>(table.SlotCount());
-    out.write(reinterpret_cast<const char*>(table.FlatVectors()),
-              static_cast<std::streamsize>(floatCount * sizeof(float)));
+    const std::uint64_t floatCount = static_cast<std::uint64_t>(table_.Dim()) * static_cast<std::uint64_t>(table_.SlotCount());
+    out.write(reinterpret_cast<const char*>(table_.FlatVectors()), static_cast<std::streamsize>(floatCount * sizeof(float)));
     return static_cast<bool>(out);
 }
 
-bool ReadVectorData(std::ifstream& in, std::size_t dim, std::size_t slotCount,
-                    std::vector<float>& data)
+bool ReadVectorData(std::ifstream& in, std::size_t dim, std::size_t slotCount, std::vector<float>& data)
 {
     data.resize(dim * slotCount);
-    in.read(reinterpret_cast<char*>(data.data()),
-            static_cast<std::streamsize>(data.size() * sizeof(float)));
+    in.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(data.size() * sizeof(float)));
     return static_cast<bool>(in);
 }
 
-bool WriteTombstones(std::ofstream& out, const VectorTable& table)
+bool WriteTombstones(std::ofstream& out, const VectorTable& table_)
 {
-    for (std::size_t id = 0; id < table.SlotCount(); ++id)
+    for (std::size_t id = 0; id < table_.SlotCount(); ++id)
     {
-        const std::uint8_t flag = table.Deleted(id) ? 1u : 0u;
+        const std::uint8_t flag = table_.Deleted(id) ? 1u : 0u;
         out.write(reinterpret_cast<const char*>(&flag), sizeof(flag));
     }
     return static_cast<bool>(out);
@@ -101,16 +97,15 @@ bool WriteTombstones(std::ofstream& out, const VectorTable& table)
 bool ReadTombstones(std::ifstream& in, std::size_t slotCount, std::vector<std::uint8_t>& deleted)
 {
     deleted.resize(slotCount);
-    in.read(reinterpret_cast<char*>(deleted.data()),
-            static_cast<std::streamsize>(deleted.size()));
+    in.read(reinterpret_cast<char*>(deleted.data()), static_cast<std::streamsize>(deleted.size()));
     return static_cast<bool>(in);
 }
 
-bool WriteMetadata(std::ofstream& out, const VectorTable& table)
+bool WriteMetadata(std::ofstream& out, const VectorTable& table_)
 {
-    for (std::size_t id = 0; id < table.SlotCount(); ++id)
+    for (std::size_t id = 0; id < table_.SlotCount(); ++id)
     {
-        if (!WriteStr(out, table.Metadata(id)))
+        if (!WriteStr(out, table_.Metadata(id)))
         {
             return false;
         }
@@ -153,9 +148,7 @@ bool ReadHeader(std::ifstream& in, FileHeader& header)
     return true;
 }
 
-bool ReadPayload(std::ifstream& in, const FileHeader& header,
-                 std::vector<float>& data, std::vector<std::uint8_t>& deleted,
-                 std::vector<std::string>& metadata)
+bool ReadPayload(std::ifstream& in, const FileHeader& header, std::vector<float>& data, std::vector<std::uint8_t>& deleted, std::vector<std::string>& metadata)
 {
     const auto dim = static_cast<std::size_t>(header.Dim);
     const auto slotCount = static_cast<std::size_t>(header.SlotCount);
@@ -178,17 +171,17 @@ bool ReadPayload(std::ifstream& in, const FileHeader& header,
 }
 
 // 全扫描 + 最小堆选出 top-K，返回按分数降序的命中列表；跳过已删除向量
-std::vector<Hit> SelectTopK(const float* query, const VectorTable& table, std::size_t k)
+std::vector<Hit> SelectTopK(const float* query, const VectorTable& table_, std::size_t k)
 {
     std::priority_queue<Hit, std::vector<Hit>, MinScoreFirst> heap;
-    const std::size_t dim = table.Dim();
-    for (std::size_t id = 0; id < table.SlotCount(); ++id)
+    const std::size_t dim = table_.Dim();
+    for (std::size_t id = 0; id < table_.SlotCount(); ++id)
     {
-        if (table.Deleted(id))
+        if (table_.Deleted(id))
         {
             continue;
         }
-        const float score = DotProduct(query, table.Vector(id), dim);
+        const float score = DotProduct(query, table_.Vector(id), dim);
         if (heap.size() < k)
         {
             heap.push(Hit{ id, score });
@@ -212,87 +205,87 @@ std::vector<Hit> SelectTopK(const float* query, const VectorTable& table, std::s
 }
 }  // namespace
 
-VectorDb::VectorDb(std::size_t dim, Metric metric) : table(dim, metric)
+VectorDb::VectorDb(std::size_t dim, Metric metric) : table_(dim, metric)
 {
 }
 
 void VectorDb::Reserve(std::size_t slotCount)
 {
-    std::unique_lock<std::shared_mutex> lock(rwMutex);
-    table.Reserve(slotCount);
+    std::unique_lock<std::shared_mutex> lock(rwMutex_);
+    table_.Reserve(slotCount);
 }
 
 std::size_t VectorDb::Add(const std::vector<float>& vec, const std::string& meta)
 {
-    std::unique_lock<std::shared_mutex> lock(rwMutex);
-    const std::size_t id = table.Add(vec, meta);
-    if (id != static_cast<std::size_t>(-1) && index && !indexDirty)
+    std::unique_lock<std::shared_mutex> lock(rwMutex_);
+    const std::size_t id = table_.Add(vec, meta);
+    if (id != static_cast<std::size_t>(-1) && index_ && !indexDirty_)
     {
-        index->Add(id);
+        index_->Add(id);
     }
     return id;
 }
 
 bool VectorDb::Update(std::size_t id, const std::vector<float>& vec, const std::string& meta)
 {
-    std::unique_lock<std::shared_mutex> lock(rwMutex);
-    const bool ok = table.Update(id, vec, meta);
-    if (ok && index && !indexDirty)
+    std::unique_lock<std::shared_mutex> lock(rwMutex_);
+    const bool ok = table_.Update(id, vec, meta);
+    if (ok && index_ && !indexDirty_)
     {
-        index->Add(id);   // 幂等：在图中则先移除再按新向量重插
+        index_->Add(id);   // 幂等：在图中则先移除再按新向量重插
     }
     return ok;
 }
 
 bool VectorDb::Delete(std::size_t id)
 {
-    std::unique_lock<std::shared_mutex> lock(rwMutex);
-    const bool ok = table.Delete(id);
-    if (ok && index && !indexDirty)
+    std::unique_lock<std::shared_mutex> lock(rwMutex_);
+    const bool ok = table_.Delete(id);
+    if (ok && index_ && !indexDirty_)
     {
-        index->Remove(id);   // 节点级删除，不再触发全量重建
+        index_->Remove(id);   // 节点级删除，不再触发全量重建
     }
     return ok;
 }
 
 std::vector<Hit> VectorDb::SearchExact(const std::vector<float>& query, std::size_t k) const
 {
-    std::shared_lock<std::shared_mutex> lock(rwMutex);
+    std::shared_lock<std::shared_mutex> lock(rwMutex_);
     std::vector<Hit> result;
-    const std::size_t n = table.Count();
-    if (n == 0 || k == 0 || query.size() != table.Dim())
+    const std::size_t n = table_.Count();
+    if (n == 0 || k == 0 || query.size() != table_.Dim())
     {
         return result;
     }
 
     std::vector<float> q = query;
-    if (table.GetMetric() == Metric::Cosine)
+    if (table_.GetMetric() == Metric::Cosine)
     {
         L2Normalize(q.data(), q.size());
     }
 
-    return SelectTopK(q.data(), table, std::min(k, n));
+    return SelectTopK(q.data(), table_, std::min(k, n));
 }
 
 void VectorDb::EnableIndex(std::size_t m, std::size_t efConstruction)
 {
-    std::unique_lock<std::shared_mutex> lock(rwMutex);
-    index = std::make_unique<HnswIndex>(&table, m, efConstruction);
-    index->Rebuild();
-    indexDirty = false;
+    std::unique_lock<std::shared_mutex> lock(rwMutex_);
+    index_ = std::make_unique<HnswIndex>(&table_, m, efConstruction);
+    index_->Rebuild();
+    indexDirty_ = false;
 }
 
 void VectorDb::DisableIndex()
 {
-    std::unique_lock<std::shared_mutex> lock(rwMutex);
-    index = nullptr;
-    indexDirty = false;
+    std::unique_lock<std::shared_mutex> lock(rwMutex_);
+    index_ = nullptr;
+    indexDirty_ = false;
 }
 
 bool VectorDb::IndexEnabled() const
 {
-    std::shared_lock<std::shared_mutex> lock(rwMutex);
-    return index != nullptr;
+    std::shared_lock<std::shared_mutex> lock(rwMutex_);
+    return index_ != nullptr;
 }
 
 std::vector<Hit> VectorDb::SearchIndexed(const std::vector<float>& query, std::size_t k, std::size_t ef) const
@@ -300,75 +293,75 @@ std::vector<Hit> VectorDb::SearchIndexed(const std::vector<float>& query, std::s
     // 快路径：索引干净 → 共享锁，读读并行；脏/无索引再落独占锁重建
     // 注意：shared_mutex 无写者优先，持续读负载可能饿写者（学习项目可接受）
     {
-        std::shared_lock<std::shared_mutex> lock(rwMutex);
-        if (!index)
+        std::shared_lock<std::shared_mutex> lock(rwMutex_);
+        if (!index_)
         {
             return {};
         }
-        if (!indexDirty)
+        if (!indexDirty_)
         {
-            return index->Search(query, k, ef);
+            return index_->Search(query, k, ef);
         }
     }
-    std::unique_lock<std::shared_mutex> lock(rwMutex);
-    if (!index)
+    std::unique_lock<std::shared_mutex> lock(rwMutex_);
+    if (!index_)
     {
         return {};   // 防共享锁释放后 DisableIndex 竞态，独占锁下重查
     }
-    if (indexDirty)
+    if (indexDirty_)
     {
-        index->Rebuild();
-        indexDirty = false;
+        index_->Rebuild();
+        indexDirty_ = false;
     }
-    return index->Search(query, k, ef);
+    return index_->Search(query, k, ef);
 }
 
 std::size_t VectorDb::Count() const
 {
-    std::shared_lock<std::shared_mutex> lock(rwMutex);
-    return table.Count();
+    std::shared_lock<std::shared_mutex> lock(rwMutex_);
+    return table_.Count();
 }
 
 std::size_t VectorDb::Dim() const
 {
-    std::shared_lock<std::shared_mutex> lock(rwMutex);
-    return table.Dim();
+    std::shared_lock<std::shared_mutex> lock(rwMutex_);
+    return table_.Dim();
 }
 
 bool VectorDb::Deleted(std::size_t id) const
 {
-    std::shared_lock<std::shared_mutex> lock(rwMutex);
-    return id < table.SlotCount() && table.Deleted(id);   // 越界 id 视为不存在
+    std::shared_lock<std::shared_mutex> lock(rwMutex_);
+    return id < table_.SlotCount() && table_.Deleted(id);   // 越界 id 视为不存在
 }
 
 std::string VectorDb::Metadata(std::size_t id) const
 {
-    std::shared_lock<std::shared_mutex> lock(rwMutex);
+    std::shared_lock<std::shared_mutex> lock(rwMutex_);
     // 按值返回：引用会逃逸锁，并发 Add/Update 下悬垂；越界 id 返回空串
-    return id < table.SlotCount() ? table.Metadata(id) : std::string{};
+    return id < table_.SlotCount() ? table_.Metadata(id) : std::string{};
 }
 
 void VectorDb::Clear()
 {
-    std::unique_lock<std::shared_mutex> lock(rwMutex);
-    table = VectorTable();
-    index = nullptr;
-    indexDirty = false;
+    std::unique_lock<std::shared_mutex> lock(rwMutex_);
+    table_ = VectorTable();
+    index_ = nullptr;
+    indexDirty_ = false;
 }
 
 bool VectorDb::Save(const std::string& path) const
 {
     // 独占锁：串行化并发 Save 到同一路径（文件级竞态），并保证迭代 DB 状态期间无写者
-    std::unique_lock<std::shared_mutex> lock(rwMutex);
+    std::unique_lock<std::shared_mutex> lock(rwMutex_);
     std::ofstream out(path, std::ios::binary);
     if (!out)
     {
         return false;
     }
 
-    const auto dim = static_cast<std::uint64_t>(table.Dim());
-    const auto slotCount = static_cast<std::uint64_t>(table.SlotCount());
-    const auto metric = MetricToU8(table.GetMetric());
+    const auto dim = static_cast<std::uint64_t>(table_.Dim());
+    const auto slotCount = static_cast<std::uint64_t>(table_.SlotCount());
+    const auto metric = MetricToU8(table_.GetMetric());
 
     out.write(Magic, 4);
     out.write(reinterpret_cast<const char*>(&FormatVersion), sizeof(FormatVersion));
@@ -379,14 +372,14 @@ bool VectorDb::Save(const std::string& path) const
     {
         return false;
     }
-    if (slotCount > 0 && !(WriteVectorData(out, table) && WriteTombstones(out, table) && WriteMetadata(out, table)))
+    if (slotCount > 0 && !(WriteVectorData(out, table_) && WriteTombstones(out, table_) && WriteMetadata(out, table_)))
     {
         return false;
     }
     // v3 起：向量段权威，索引段为可校验缓存（缺失/损坏即降级懒重建）
-    const std::uint8_t hasIndex = (index && !indexDirty) ? 1u : 0u;
+    const std::uint8_t hasIndex = (index_ && !indexDirty_) ? 1u : 0u;
     out.write(reinterpret_cast<const char*>(&hasIndex), sizeof(hasIndex));
-    if (hasIndex && !index->Write(out))
+    if (hasIndex && !index_->Write(out))
     {
         return false;
     }
@@ -395,7 +388,7 @@ bool VectorDb::Save(const std::string& path) const
 
 bool VectorDb::Load(const std::string& path)
 {
-    std::unique_lock<std::shared_mutex> lock(rwMutex);
+    std::unique_lock<std::shared_mutex> lock(rwMutex_);
     std::ifstream in(path, std::ios::binary);
     if (!in)
     {
@@ -419,19 +412,19 @@ bool VectorDb::Load(const std::string& path)
         }
     }
 
-    const std::size_t oldDim = table.Dim();
-    const Metric oldMetric = table.GetMetric();
-    table.SetData(static_cast<std::size_t>(header.Dim), U8ToMetric(header.MetricCode), std::move(data), std::move(metadata), std::move(deleted));
-    if (index)
+    const std::size_t oldDim = table_.Dim();
+    const Metric oldMetric = table_.GetMetric();
+    table_.SetData(static_cast<std::size_t>(header.Dim), U8ToMetric(header.MetricCode), std::move(data), std::move(metadata), std::move(deleted));
+    if (index_)
     {
         // 维度/度量变更时，旧索引的 dim/metric 是旧表快照，按错维打分 → 丢弃重建
         if (oldDim != static_cast<std::size_t>(header.Dim) || oldMetric != U8ToMetric(header.MetricCode))
         {
-            index.reset();
+            index_.reset();
         }
         else
         {
-            indexDirty = true;
+            indexDirty_ = true;
         }
     }
     if (header.Version >= 3)
@@ -440,12 +433,12 @@ bool VectorDb::Load(const std::string& path)
         in.read(reinterpret_cast<char*>(&hasIndex), sizeof(hasIndex));
         if (hasIndex)
         {
-            if (!index)
+            if (!index_)
             {
-                index = std::make_unique<HnswIndex>(&table);
+                index_ = std::make_unique<HnswIndex>(&table_);
             }
             // 索引段校验失败/截断 → 标记脏，下次 SearchIndexed 懒重建（向量数据不受影响）
-            indexDirty = !index->Read(in);
+            indexDirty_ = !index_->Read(in);
         }
     }
     return true;

@@ -45,10 +45,10 @@ public:
     void Clear();
 
 private:
-    VectorTable table;
-    std::unique_ptr<HnswIndex> index;
-    mutable bool indexDirty = false;
-    mutable std::shared_mutex rwMutex;     // 门面读写锁：所有公有方法均须持有，读共享/写独占
+    VectorTable table_;
+    std::unique_ptr<HnswIndex> index_;
+    mutable bool indexDirty_ = false;
+    mutable std::shared_mutex rwMutex_;     // 门面读写锁：所有公有方法均须持有，读共享/写独占
 };
 
 }  // namespace Beacon
